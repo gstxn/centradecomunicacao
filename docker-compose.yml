@@ -1,0 +1,25 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: central-comunicacao-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: central_comunicacao
+      POSTGRES_USER: central_app
+      POSTGRES_PASSWORD: central_local_2026
+    ports:
+      - "5432:5432"
+    volumes:
+      - central_postgres_data:/var/lib/postgresql/data
+      - ./database/001_multi_tenant_foundation.sql:/docker-entrypoint-initdb.d/001_foundation.sql:ro
+      - ./database/002_demo_companies.sql:/docker-entrypoint-initdb.d/002_demo.sql:ro
+      - ./database/003_demo_users.sql:/docker-entrypoint-initdb.d/003_users.sql:ro
+      - ./database/004_comunicados_and_calendar.sql:/docker-entrypoint-initdb.d/004_comunicados_and_calendar.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U central_app -d central_comunicacao"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  central_postgres_data:

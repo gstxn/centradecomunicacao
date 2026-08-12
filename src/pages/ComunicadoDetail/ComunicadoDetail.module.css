@@ -1,0 +1,243 @@
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding-bottom: 4rem;
+}
+
+.topActions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.backButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.backButton:hover {
+  color: var(--color-primary-accent);
+}
+
+.deleteButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.deleteButton:hover {
+  background: var(--color-danger);
+  color: var(--color-bg-body);
+}
+
+.paper {
+  background-color: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+.header {
+  padding: 3rem 3rem 2rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tags {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.tag {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tag.urgent {
+  background-color: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.title {
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin-bottom: 1.5rem;
+  color: var(--color-text-main);
+}
+
+.metaBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.metaItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.content {
+  padding: 3rem;
+  font-size: 1.05rem;
+  line-height: 1.7;
+  color: var(--color-text-main);
+}
+
+.content p {
+  margin-bottom: 1.5rem;
+}
+
+.content h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 2rem 0 1rem;
+}
+
+.attachments {
+  margin: 0 3rem 3rem;
+  padding: 1.5rem;
+  background-color: var(--color-bg-body);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.attachTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.attachList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.attachItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  background-color: var(--color-bg-card);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  text-decoration: none;
+  color: var(--color-text-main);
+  transition: all 0.2s;
+}
+
+.attachItem:hover {
+  border-color: var(--color-primary-accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.attachLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.attachName {
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+.attachSize {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.confirmationSection {
+  margin: 0 3rem 3rem;
+  padding: 2rem;
+  background-color: rgba(224, 122, 95, 0.05);
+  border: 1px solid rgba(224, 122, 95, 0.2);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  transition: all 0.3s;
+}
+
+.confirmationSection.confirmed {
+  background-color: rgba(16, 185, 129, 0.05);
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.confirmTitle {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--color-text-main);
+}
+
+.confirmText {
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+  margin-bottom: 1.5rem;
+}
+
+.confirmButton {
+  padding: 1rem 2rem;
+  background-color: var(--color-primary-accent);
+  color: var(--color-bg-body);
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: background-color 0.2s;
+}
+
+.confirmButton:hover {
+  background-color: var(--color-primary-accent);
+}
+
+.confirmButton.confirmed {
+  background-color: transparent;
+  color: var(--color-success);
+  border: 1px solid var(--color-success);
+  cursor: default;
+}
+
+@media (max-width: 768px) {
+  .header, .content {
+    padding: 2rem;
+  }
+  .attachments, .confirmationSection {
+    margin: 0 2rem 2rem;
+  }
+  .title {
+    font-size: 1.75rem;
+  }
+}

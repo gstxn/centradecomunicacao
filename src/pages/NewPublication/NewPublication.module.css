@@ -1,0 +1,356 @@
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding-bottom: 4rem;
+}
+
+.header {
+  margin-bottom: 2rem;
+}
+
+.title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-text-main);
+  margin-bottom: 0.5rem;
+}
+
+.subtitle {
+  color: var(--color-text-muted);
+}
+
+.formCard {
+  background-color: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 2rem 2.5rem;
+}
+
+.formError {
+  margin: 1rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-bg);
+  color: #991b1b;
+  font-weight: 600;
+}
+
+.section {
+  margin-bottom: 2.5rem;
+  padding-bottom: 2.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.sectionTitle {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-text-main);
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.formGroup.full {
+  grid-column: span 2;
+}
+
+.label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--color-text-main);
+}
+
+.input, .select, .textarea {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-bg-body);
+  font-family: var(--font-family);
+  font-size: 0.95rem;
+  color: var(--color-text-main);
+  outline: none;
+  transition: all 0.2s;
+}
+
+.input:focus, .select:focus, .textarea:focus {
+  border-color: var(--color-primary-accent);
+  background-color: var(--color-bg-card);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.textarea {
+  resize: vertical;
+  min-height: 200px;
+}
+
+.editorToolbar {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background-color: var(--color-bg-body);
+  border: 1px solid var(--color-border);
+  border-bottom: none;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.editorBtn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.editorBtn:hover {
+  background-color: rgba(0,0,0,0.05);
+  color: var(--color-text-main);
+}
+
+.richTextWrapper .textarea {
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+
+.checkboxGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  cursor: pointer;
+}
+
+.checkboxGroup input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-primary-accent);
+}
+
+.checkboxText {
+  font-size: 0.95rem;
+  color: var(--color-text-main);
+}
+
+.checkboxDesc {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  margin-top: 0.25rem;
+}
+
+.dragDropArea {
+  width: 100%;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  background-color: var(--color-bg-body);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.dragDropArea:hover {
+  border-color: var(--color-primary-accent);
+  color: var(--color-primary-accent);
+  background-color: rgba(37, 99, 235, 0.02);
+}
+
+.actionButtons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+/* React Quill Overrides */
+.quillWrapper {
+  background-color: var(--color-bg-body);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+
+.quillWrapper :global(.ql-toolbar) {
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-bg-body);
+  font-family: var(--font-family);
+  padding: 0.75rem;
+}
+
+.quillWrapper :global(.ql-container) {
+  border: none;
+  font-family: var(--font-family);
+  font-size: 0.95rem;
+  min-height: 250px;
+  background-color: var(--color-bg-body);
+  color: var(--color-text-main);
+}
+
+.quillWrapper :global(.ql-stroke) {
+  stroke: var(--color-text-main);
+}
+
+.quillWrapper :global(.ql-fill) {
+  fill: var(--color-text-main);
+}
+
+.quillWrapper :global(.ql-picker) {
+  color: var(--color-text-main);
+}
+
+.quillWrapper :global(.ql-toolbar button:hover .ql-stroke),
+.quillWrapper :global(.ql-toolbar button:focus .ql-stroke),
+.quillWrapper :global(.ql-toolbar button.ql-active .ql-stroke),
+.quillWrapper :global(.ql-toolbar .ql-picker-label:hover .ql-stroke),
+.quillWrapper :global(.ql-toolbar .ql-picker-label.ql-active .ql-stroke),
+.quillWrapper :global(.ql-toolbar .ql-picker-item:hover .ql-stroke),
+.quillWrapper :global(.ql-toolbar .ql-picker-item.ql-selected .ql-stroke) {
+  stroke: var(--color-primary-accent);
+}
+
+.quillWrapper :global(.ql-toolbar button:hover .ql-fill),
+.quillWrapper :global(.ql-toolbar button:focus .ql-fill),
+.quillWrapper :global(.ql-toolbar button.ql-active .ql-fill),
+.quillWrapper :global(.ql-toolbar .ql-picker-label:hover .ql-fill),
+.quillWrapper :global(.ql-toolbar .ql-picker-label.ql-active .ql-fill),
+.quillWrapper :global(.ql-toolbar .ql-picker-item:hover .ql-fill),
+.quillWrapper :global(.ql-toolbar .ql-picker-item.ql-selected .ql-fill) {
+  fill: var(--color-primary-accent);
+}
+
+.quillWrapper :global(.ql-toolbar .ql-picker-options) {
+  background-color: var(--color-bg-card);
+  border-color: var(--color-border);
+}
+
+.quillWrapper :global(.ql-editor) {
+  min-height: 250px;
+}
+
+.quillWrapper :global(.ql-editor.ql-blank::before) {
+  color: var(--color-text-muted);
+  font-style: normal;
+}
+
+/* File Upload Styles */
+.fileList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.fileItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  background-color: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.fileInfo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.fileName {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--color-text-main);
+}
+
+.fileSize {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.removeFileBtn {
+  background: none;
+  border: none;
+  color: var(--color-danger);
+  cursor: pointer;
+  padding: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.removeFileBtn:hover {
+  background-color: var(--color-danger-bg);
+}
+
+.btnCancel {
+  padding: 0.75rem 1.5rem;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-main);
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btnCancel:hover {
+  background-color: var(--color-bg-body);
+}
+
+.btnSubmit {
+  padding: 0.75rem 2rem;
+  background-color: var(--color-primary-accent);
+  color: var(--color-bg-body);
+  border: none;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btnSubmit:hover {
+  background-color: var(--color-primary-accent);
+}
+
+@media (max-width: 768px) {
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
+  .formGroup.full {
+    grid-column: 1;
+  }
+  .formCard {
+    padding: 1.5rem;
+  }
+}

@@ -1,0 +1,99 @@
+import React from 'react';
+import { NavLink } from 'react-router-dom';
+import {
+  BarChart3, BookOpen, Building2, CalendarDays, ChevronRight, CircleHelp,
+  FileText, Gauge, Headphones, LayoutGrid, MessageSquare, Plus, Settings2,
+  ShieldCheck, Sparkles, Users, X, Sun, Moon
+} from 'lucide-react';
+import styles from './Sidebar.module.css';
+import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
+import { useComunicados } from '../../context/ComunicadosContext';
+
+interface SidebarProps { isOpen: boolean; onClose: () => void; }
+
+const navigation = [
+  { icon: LayoutGrid, label: 'Visão geral', detail: 'Seu dia de trabalho', path: '/' },
+  { icon: MessageSquare, label: 'Mural', detail: 'Comunicados e ciência', path: '/comunicados', badge: '05' },
+  { icon: FileText, label: 'Documentos', detail: 'Biblioteca corporativa', path: '/documentos' },
+  { icon: Headphones, label: 'Chamados', detail: 'Suporte e solicitações', path: '/suporte' },
+];
+
+const workspace = [
+  { icon: CalendarDays, label: 'Agenda', path: '/calendario' },
+  { icon: BookOpen, label: 'Minhas leituras', path: '/leituras' },
+  { icon: BarChart3, label: 'Relatórios', path: '/relatorios' },
+];
+
+const management = [
+  { icon: Headphones, label: 'Monitoramento', path: '/admin/chamados' },
+  { icon: Building2, label: 'Empresa e pessoas', path: '/admin/empresa' },
+  { icon: Gauge, label: 'Indicadores', path: '/admin/indicadores' },
+  { icon: Settings2, label: 'Configurações', path: '/links' },
+];
+
+export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
+  const { activeCompany } = useAuth();
+  const { theme, toggleTheme } = useTheme();
+  const { comunicados } = useComunicados();
+  const unreadCount = comunicados.filter(c => !c.read).length;
+  
+  const closeAfterNavigation = () => onClose();
+
+  return <>
+    <button type="button" className={`${styles.overlay} ${isOpen ? styles.visible : ''}`} onClick={onClose} aria-label="Fechar menu" />
+    <aside className={`${styles.drawer} ${isOpen ? styles.open : ''}`} aria-hidden={!isOpen}>
+      <header className={styles.drawerHeader}>
+        <div className={styles.identity}><span className={styles.mark}>C</span><div><strong>central.</strong><small>WORKPLACE OS</small></div></div>
+        <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center'}}>
+          <button type="button" className={styles.closeButton} onClick={toggleTheme} aria-label="Trocar tema" title={`Mudar para modo ${theme === 'dark' ? 'claro' : 'escuro'}`}>
+            {theme === 'dark' ? <Sun size={17}/> : <Moon size={17}/>}
+          </button>
+          <button type="button" className={styles.closeButton} onClick={onClose} aria-label="Fechar navegação"><X size={17}/><kbd>ESC</kbd></button>
+        </div>
+      </header>
+
+      <div className={styles.companyContext}>
+        <div className={styles.companyIcon}><Building2 size={17}/></div>
+        <div><small>ESPAÇO ATIVO</small><strong>{activeCompany?.name ?? 'Sua empresa'}</strong></div>
+        <span className={styles.online}><i/> ONLINE</span>
+      </div>
+
+      <div className={styles.drawerBody}>
+        <section className={styles.navGroup}>
+          <div className={styles.groupTitle}><span>NAVEGAÇÃO</span><span>01</span></div>
+          <nav>{navigation.map(item => {
+            let badge = item.badge;
+            if (item.path === '/comunicados') {
+              badge = unreadCount > 0 ? (unreadCount < 10 ? `0${unreadCount}` : unreadCount.toString()) : undefined;
+            }
+            return <NavLink key={item.path} to={item.path} end={item.path === '/'} onClick={closeAfterNavigation} className={({isActive}) => `${styles.mainLink} ${isActive ? styles.active : ''}`}>
+              <span className={styles.linkIcon}><item.icon size={16}/></span><span className={styles.linkCopy}><strong>{item.label}</strong><small>{item.detail}</small></span>{badge && <span className={styles.badge}>{badge}</span>}<ChevronRight className={styles.arrow} size={14}/>
+            </NavLink>
+          })}</nav>
+        </section>
+
+        <div className={styles.splitGroups}>
+          <section className={styles.navGroup}>
+            <div className={styles.groupTitle}><span>MEU ESPAÇO</span><span>02</span></div>
+            <nav>{workspace.map(item => <NavLink key={item.path} to={item.path} onClick={closeAfterNavigation} className={({isActive}) => `${styles.compactLink} ${isActive ? styles.active : ''}`}><item.icon size={14}/><span>{item.label}</span></NavLink>)}</nav>
+          </section>
+          <section className={styles.navGroup}>
+            <div className={styles.groupTitle}><span>GESTÃO</span><span>03</span></div>
+            <nav>{management.map(item => <NavLink key={item.path} to={item.path} onClick={closeAfterNavigation} className={({isActive}) => `${styles.compactLink} ${isActive ? styles.active : ''}`}><item.icon size={14}/><span>{item.label}</span></NavLink>)}</nav>
+          </section>
+        </div>
+
+        <section className={styles.channels}>
+          <div className={styles.groupTitle}><span>CANAIS</span><span>04</span></div>
+          <div><NavLink to="/cat/qualidade" onClick={closeAfterNavigation}><ShieldCheck size={12}/> Qualidade</NavLink><NavLink to="/cat/rh" onClick={closeAfterNavigation}><Users size={12}/> Pessoas</NavLink><NavLink to="/cat/ti" onClick={closeAfterNavigation}><Sparkles size={12}/> Tecnologia</NavLink></div>
+        </section>
+      </div>
+
+      <footer className={styles.drawerFooter}>
+        <div className={styles.helpCopy}><CircleHelp size={16}/><div><strong>Algo saiu do lugar?</strong><small>A gente encontra o caminho com você.</small></div></div>
+        <NavLink to="/suporte" onClick={closeAfterNavigation} className={styles.helpAction}><Plus size={14}/> Novo chamado</NavLink>
+      </footer>
+    </aside>
+  </>;
+};

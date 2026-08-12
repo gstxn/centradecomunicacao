@@ -1,0 +1,179 @@
+.container {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+
+@media (max-width: 1024px) {
+  .container {
+    flex-direction: column;
+  }
+}
+
+/* Latest Updates */
+.updatesSection {
+  flex: 2;
+  width: 100%;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.title {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.link {
+  color: var(--color-primary-accent);
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.list {
+  background-color: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--color-border);
+  gap: 1rem;
+  transition: background-color 0.2s;
+  text-decoration: none;
+  color: var(--color-text-main);
+}
+
+.item:last-child {
+  border-bottom: none;
+}
+
+.item:hover {
+  background-color: var(--color-bg-body);
+}
+
+.iconWrapper {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.itemContent {
+  flex: 1;
+}
+
+.itemTitleWrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.itemTitle {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.badge {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.itemMeta {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+/* Colors for dynamic tags */
+.bg-green { background-color: var(--color-success-bg); color: var(--color-success); }
+.bg-gray { background-color: #F3F4F6; color: #4B5563; }
+.bg-purple { background-color: var(--color-purple-bg); color: var(--color-purple); }
+.bg-orange { background-color: var(--color-warning-bg); color: var(--color-warning); }
+
+/* Calendar */
+.calendarSection {
+  flex: 1;
+  width: 100%;
+}
+
+.calendarCard {
+  background-color: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+}
+
+.calItem {
+  display: flex;
+  align-items: flex-start;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--color-border);
+  gap: 1rem;
+}
+
+.calItem:last-child {
+  border-bottom: none;
+}
+
+.calDate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 40px;
+}
+
+.calDay {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.calMonth {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.calContent {
+  flex: 1;
+}
+
+.calTitle {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.calMeta {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.calDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 0.25rem;
+}

@@ -1,0 +1,19 @@
+.shell { min-height: 100vh; background: var(--color-bg-body); color: var(--color-text-main); }
+.main { min-height: 100vh; width: 100%; }
+.content { width: 100%; }
+
+.pageTransition {
+  animation: pageFadeIn 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  will-change: opacity, transform;
+}
+
+@keyframes pageFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
