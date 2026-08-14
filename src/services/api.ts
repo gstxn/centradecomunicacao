@@ -1,3 +1,5 @@
+export type SystemRole = 'owner' | 'admin' | 'publisher' | 'manager' | 'employee' | 'auditor' | 'support';
+
 export interface ApiCompany {
   id: string;
   name: string;
@@ -7,7 +9,7 @@ export interface ApiCompany {
     id: string;
     companyId: string;
     userId: string;
-    role: 'owner' | 'admin' | 'publisher' | 'manager' | 'employee' | 'auditor' | 'support';
+    role: SystemRole;
     departmentIds: string[];
     status: 'active' | 'invited' | 'suspended';
   };
@@ -37,7 +39,7 @@ export interface TenantUser {
   id: string;
   name: string;
   email: string;
-  role: string;
+  role: SystemRole;
   departments: string[];
 }
 
@@ -45,23 +47,22 @@ const API_URL = import.meta.env.VITE_API_URL ?? '/api';
 
 const parseResponse = async <T>(response: Response): Promise<T> => {
   const text = await response.text();
-  let body: any = {};
-  
+  let body: unknown;
+
   try {
     body = text ? JSON.parse(text) : {};
-  } catch (err) {
-    if (!response.ok) {
-      throw new Error(`Erro no servidor (${response.status}): ${text}`);
-    }
-    // If it's OK but not JSON, we might just return the text or empty object
-    body = text as any;
+  } catch {
+    throw new Error(`O servidor retornou uma resposta inválida (${response.status}).`);
   }
 
   if (!response.ok) {
-    throw new Error(body.message ?? `Não foi possível concluir a operação (${response.status}).`);
+    const message = typeof body === 'object' && body !== null && 'message' in body && typeof body.message === 'string'
+      ? body.message
+      : `Não foi possível concluir a operação (${response.status}).`;
+    throw new Error(message);
   }
-  
-  return body as T & { message?: string };
+
+  return body as T;
 };
 
 export const loginRequest = async (email: string, password: string) => parseResponse<ApiSession>(await fetch(`${API_URL}/auth/login`, {

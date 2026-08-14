@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { pool } from './db.js';
 import type {
   AuthenticatedUser,
@@ -24,6 +24,7 @@ export interface TenantUserView {
 }
 
 // Em memória temporária (poderíamos migrar para Redis depois)
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const sessions = new Map<string, Session>();
 
 export const authenticate = async (email: string, password: string) => {
@@ -71,7 +72,15 @@ export const authenticate = async (email: string, password: string) => {
   return { accessToken: token, user: authenticatedUser, activeCompanyId };
 };
 
-export const resolveSession = (token: string) => sessions.get(token) ?? null;
+export const resolveSession = (token: string) => {
+  const session = sessions.get(token);
+  if (!session) return null;
+  if (Date.now() - session.createdAt.getTime() > SESSION_TTL_MS) {
+    sessions.delete(token);
+    return null;
+  }
+  return session;
+};
 
 export const resolveTenant = async (token: string, requestedCompanyId: string) => {
   const session = resolveSession(token);

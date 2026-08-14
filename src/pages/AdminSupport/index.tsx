@@ -17,7 +17,7 @@ export const AdminSupport: React.FC = () => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) setTickets(JSON.parse(raw));
-    } catch (err) {}
+    } catch {}
   }, []);
 
   const saveTickets = (updatedTickets: Ticket[]) => {

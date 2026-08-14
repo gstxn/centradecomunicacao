@@ -9,11 +9,19 @@ import {
 } from './store.js';
 
 const PORT = Number(process.env.API_PORT ?? 3333);
+const WEB_ORIGIN = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
+const MAX_BODY_BYTES = 64 * 1024;
+
+class HttpError extends Error {
+  constructor(readonly statusCode: number, readonly code: string, message: string) {
+    super(message);
+  }
+}
 
 const sendJson = (response: ServerResponse, statusCode: number, body: unknown) => {
   response.writeHead(statusCode, {
     'content-type': 'application/json; charset=utf-8',
-    'access-control-allow-origin': 'http://localhost:5173',
+    'access-control-allow-origin': WEB_ORIGIN,
     'access-control-allow-headers': 'authorization, content-type, x-company-id',
     'access-control-allow-methods': 'GET, POST, OPTIONS'
   });
@@ -22,9 +30,19 @@ const sendJson = (response: ServerResponse, statusCode: number, body: unknown) =
 
 const readJson = async (request: IncomingMessage) => {
   const chunks: Buffer[] = [];
-  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  let size = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.from(chunk);
+    size += buffer.length;
+    if (size > MAX_BODY_BYTES) throw new HttpError(413, 'PAYLOAD_TOO_LARGE', 'O corpo da requisição excede o limite permitido.');
+    chunks.push(buffer);
+  }
   if (chunks.length === 0) return {};
-  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
+  } catch {
+    throw new HttpError(400, 'INVALID_JSON', 'O corpo da requisição deve conter JSON válido.');
+  }
 };
 
 const bearerToken = (request: IncomingMessage) => {
@@ -99,6 +117,9 @@ export const app = createServer(async (request, response) => {
 
     return sendJson(response, 404, { error: 'NOT_FOUND', message: 'Rota não encontrada.', statusCode: 404 });
   } catch (error) {
+    if (error instanceof HttpError) {
+      return sendJson(response, error.statusCode, { error: error.code, message: error.message, statusCode: error.statusCode });
+    }
     console.error(error);
     return sendJson(response, 500, { error: 'INTERNAL_ERROR', message: 'Erro interno da API.', statusCode: 500 });
   }
