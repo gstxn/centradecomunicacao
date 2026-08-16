@@ -5,13 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:api": "node --watch apps/api/dist/apps/api/src/server.js",
+    "dev:api": "npm run build:api && node --watch apps/api/dist/apps/api/src/server.js",
     "build:web": "tsc -b && vite build",
     "build:api": "tsc -p apps/api/tsconfig.json",
     "build": "npm run build:web && npm run build:api",
     "lint": "oxlint",
     "test:api": "npm run build:api && node --test apps/api/dist/apps/api/test/*.test.js",
-    "check": "npm run lint && npm run build && npm run test:api",
+    "check:static": "npm run lint && npm run build",
+    "check": "npm run check:static && npm run test:api",
     "preview": "vite preview",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
@@ -26,13 +27,15 @@
     "react-dom": "^19.2.8",
     "react-is": "^19.2.8",
     "react-router-dom": "^7.18.2",
-    "recharts": "^3.10.1"
+    "recharts": "^3.10.1",
+    "sanitize-html": "^2.17.7"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
     "@types/pg": "^8.21.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@types/sanitize-html": "^2.16.1",
     "@vitejs/plugin-react": "^6.0.4",
     "oxlint": "^1.75.0",
     "typescript": "~6.0.2",

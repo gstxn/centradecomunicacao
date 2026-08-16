@@ -73,7 +73,8 @@
   border: 1px solid transparent;
 }
 
-.categoryCard:hover {
+.categoryCard:hover,
+.categoryCard.activeCategory {
   transform: translateY(-4px);
   box-shadow: var(--shadow-md);
   border-color: var(--color-primary-accent);

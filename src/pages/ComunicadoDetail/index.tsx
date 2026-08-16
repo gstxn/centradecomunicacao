@@ -1,28 +1,20 @@
 import React from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, User, Users, Paperclip, Download, CheckCircle2, Trash2 } from 'lucide-react';
+import { useParams, Link } from 'react-router-dom';
+import { ArrowLeft, Calendar, User, Users, Paperclip, Download, CheckCircle2 } from 'lucide-react';
 import styles from './ComunicadoDetail.module.css';
 import { useComunicados } from '../../context/ComunicadosContext';
 import { sanitizeHtml } from '../../utils/sanitizeHtml';
 
 export const ComunicadoDetail: React.FC = () => {
   const { id } = useParams();
-  const navigate = useNavigate();
-  const { comunicados, markAsRead, deleteComunicado } = useComunicados();
+  const { comunicados, markAsRead } = useComunicados();
 
   // Encontra o comunicado pelo ID na URL
-  const comunicado = comunicados.find(c => c.id === Number(id));
+  const comunicado = comunicados.find(c => c.id === id);
 
   const handleConfirm = () => {
     if (comunicado) {
       markAsRead(comunicado.id);
-    }
-  };
-
-  const handleDelete = () => {
-    if (comunicado && window.confirm('Tem certeza que deseja excluir este comunicado? Esta ação não pode ser desfeita.')) {
-      deleteComunicado(comunicado.id);
-      navigate('/comunicados');
     }
   };
 
@@ -42,10 +34,6 @@ export const ComunicadoDetail: React.FC = () => {
           <ArrowLeft size={20} />
           Voltar para Comunicados
         </Link>
-        <button onClick={handleDelete} className={styles.deleteButton}>
-          <Trash2 size={16} />
-          Excluir Comunicado
-        </button>
       </div>
 
       <article className={styles.paper}>

@@ -5,7 +5,11 @@ import { useAuth } from '../../context/AuthContext';
 import { useComunicados } from '../../context/ComunicadosContext';
 import styles from './Dashboard.module.css';
 
-const events: any[] = [];
+const events = [
+  { day: '18', title: 'Treinamento 2FA e Segurança', time: '14:00', place: 'Online (Teams)' },
+  { day: '21', title: 'Alinhamento de Indicadores Q3', time: '09:00', place: 'Sala 3 (Matriz)' },
+  { day: '25', title: 'Manutenção de Infraestrutura', time: '23:00', place: 'Servidores Matriz' }
+];
 
 export const Dashboard: React.FC = () => {
   const { user, activeCompany } = useAuth();

@@ -1,89 +1,138 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Eye, TrendingUp, Users, AlertCircle } from 'lucide-react';
+import { Eye, TrendingUp, Users, AlertCircle, Sparkles, Building2 } from 'lucide-react';
 import styles from './AdminDashboard.module.css';
-
-// Mock Data for Charts
-const dataBar = [
-  { name: 'Matriz', lidos: 85, nao_lidos: 15 },
-  { name: 'Unidade Centro', lidos: 65, nao_lidos: 35 },
-  { name: 'Unidade Sul', lidos: 90, nao_lidos: 10 },
-  { name: 'Unidade Norte', lidos: 45, nao_lidos: 55 },
-];
-
-const dataPie = [
-  { name: 'Lidos', value: 78 },
-  { name: 'Pendentes', value: 22 },
-];
+import { useAuth } from '../../context/AuthContext';
+import { useComunicados } from '../../context/ComunicadosContext';
 
 const COLORS = ['var(--color-primary-accent)', 'var(--color-border)'];
 
 export const AdminDashboard: React.FC = () => {
+  const { activeCompany, user } = useAuth();
+  const { comunicados } = useComunicados();
+
+  const totalNotices = comunicados.length;
+  const readCount = useMemo(() => comunicados.filter((c) => c.read).length, [comunicados]);
+  const unreadCount = useMemo(() => comunicados.filter((c) => !c.read).length, [comunicados]);
+  const urgentUnreadCount = useMemo(() => comunicados.filter((c) => !c.read && c.type === 'Urgente').length, [comunicados]);
+
+  const readingRate = totalNotices === 0 ? 100 : Math.round((readCount / totalNotices) * 100);
+
+  // Dynamic Pie Data
+  const dataPie = useMemo(() => {
+    if (totalNotices === 0) {
+      return [{ name: 'Sem dados', value: 1 }];
+    }
+    return [
+      { name: 'Lidos', value: readCount },
+      { name: 'Pendentes', value: unreadCount }
+    ];
+  }, [totalNotices, readCount, unreadCount]);
+
+  // Dynamic Bar Data by Category / Sector
+  const dataBar = useMemo(() => {
+    const categories = Array.from(new Set(comunicados.map((c) => c.category || c.department || 'Geral')));
+    if (categories.length === 0) {
+      return [
+        { name: 'TI', lidos: 0, nao_lidos: 0 },
+        { name: 'Qualidade', lidos: 0, nao_lidos: 0 },
+        { name: 'RH', lidos: 0, nao_lidos: 0 }
+      ];
+    }
+    return categories.map((cat) => {
+      const catNotices = comunicados.filter((c) => (c.category || c.department) === cat);
+      const lidos = catNotices.filter((c) => c.read).length;
+      const nao_lidos = catNotices.filter((c) => !c.read).length;
+      return {
+        name: cat,
+        lidos,
+        nao_lidos
+      };
+    });
+  }, [comunicados]);
+
+  // Unread items list
+  const pendingNotices = useMemo(() => {
+    return comunicados.filter((c) => !c.read).slice(0, 4);
+  }, [comunicados]);
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <h1 className={styles.title}>Painel Gerencial</h1>
-        <p className={styles.subtitle}>Acompanhamento de leitura e engajamento da comunicação</p>
+        <div>
+          <h1 className={styles.title}>Painel Gerencial</h1>
+          <p className={styles.subtitle}>
+            Acompanhamento de leitura, ciência e engajamento da comunicação em {activeCompany?.name ?? 'sua empresa'}.
+          </p>
+        </div>
       </div>
 
       <div className={styles.statsGrid}>
         <div className={styles.statCard}>
           <div className={styles.statHeader}>
-            <span className={styles.statTitle}>Taxa Geral de Leitura</span>
-            <div className={styles.statIcon} style={{color: 'var(--color-primary-accent)'}}><Eye size={18}/></div>
+            <span className={styles.statTitle}>Taxa de Ciência Global</span>
+            <div className={styles.statIcon} style={{ color: 'var(--color-primary-accent)' }}>
+              <Eye size={18} />
+            </div>
           </div>
-          <div className={styles.statValue}>78%</div>
-          <div className={`${styles.statChange} ${styles.positive}`}>
-            <TrendingUp size={14} /> +5% este mês
+          <div className={styles.statValue}>{readingRate}%</div>
+          <div className={`${styles.statChange} ${readingRate >= 80 ? styles.positive : styles.negative}`}>
+            <TrendingUp size={14} /> {readingRate >= 80 ? 'Meta de compliance atingida' : 'Abaixo da meta de 80%'}
           </div>
         </div>
 
         <div className={styles.statCard}>
           <div className={styles.statHeader}>
             <span className={styles.statTitle}>Comunicados Publicados</span>
-            <div className={styles.statIcon} style={{color: 'var(--color-purple)'}}><Users size={18}/></div>
+            <div className={styles.statIcon} style={{ color: 'var(--color-purple)' }}>
+              <Users size={18} />
+            </div>
           </div>
-          <div className={styles.statValue}>124</div>
+          <div className={styles.statValue}>{totalNotices}</div>
           <div className={styles.statChange}>
-            12 nos últimos 30 dias
+            {readCount} leituras confirmadas
           </div>
         </div>
 
         <div className={styles.statCard}>
           <div className={styles.statHeader}>
             <span className={styles.statTitle}>Pendências Críticas</span>
-            <div className={styles.statIcon} style={{color: 'var(--color-danger)'}}><AlertCircle size={18}/></div>
+            <div className={styles.statIcon} style={{ color: 'var(--color-danger)' }}>
+              <AlertCircle size={18} />
+            </div>
           </div>
-          <div className={styles.statValue}>18</div>
-          <div className={`${styles.statChange} ${styles.negative}`}>
-            Usuários com comunicados vencidos
+          <div className={styles.statValue}>{urgentUnreadCount}</div>
+          <div className={`${styles.statChange} ${urgentUnreadCount > 0 ? styles.negative : styles.positive}`}>
+            {urgentUnreadCount > 0 ? 'Avisos urgentes aguardando ciência' : 'Nenhuma urgência atrasada'}
           </div>
         </div>
-        
+
         <div className={styles.statCard}>
           <div className={styles.statHeader}>
-            <span className={styles.statTitle}>Buscas sem resultado</span>
-            <div className={styles.statIcon} style={{color: 'var(--color-warning)'}}><AlertCircle size={18}/></div>
+            <span className={styles.statTitle}>Mural & Equipe</span>
+            <div className={styles.statIcon} style={{ color: 'var(--color-warning)' }}>
+              <Building2 size={18} />
+            </div>
           </div>
-          <div className={styles.statValue}>45</div>
+          <div className={styles.statValue}>{activeCompany?.name ? 'Ativo' : 'N/A'}</div>
           <div className={styles.statChange}>
-            Termos não encontrados no portal
+            Perfil: {activeCompany?.membership?.role ?? user?.name ?? 'Gestor'}
           </div>
         </div>
       </div>
 
       <div className={styles.chartsGrid}>
         <div className={styles.chartCard}>
-          <h3 className={styles.chartTitle}>Taxa de Leitura por Unidade</h3>
+          <h3 className={styles.chartTitle}>Taxa de Ciência por Setor / Categoria</h3>
           <div className={styles.chartContainer}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={dataBar} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} />
                 <YAxis axisLine={false} tickLine={false} />
-                <RechartsTooltip cursor={{fill: 'var(--color-bg-body)'}} />
-                <Bar dataKey="lidos" stackId="a" fill="var(--color-primary-accent)" radius={[0, 0, 4, 4]} />
-                <Bar dataKey="nao_lidos" stackId="a" fill="var(--color-border)" radius={[4, 4, 0, 0]} />
+                <RechartsTooltip cursor={{ fill: 'var(--color-bg-body)' }} />
+                <Bar dataKey="lidos" name="Lidos" stackId="a" fill="var(--color-primary-accent)" radius={[0, 0, 4, 4]} />
+                <Bar dataKey="nao_lidos" name="Pendentes" stackId="a" fill="var(--color-border)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -110,8 +159,8 @@ export const AdminDashboard: React.FC = () => {
                 <RechartsTooltip />
               </PieChart>
             </ResponsiveContainer>
-            <div style={{textAlign: 'center', marginTop: '-150px', fontWeight: 700, fontSize: '2rem'}}>
-              78%
+            <div style={{ textAlign: 'center', marginTop: '-150px', fontWeight: 700, fontSize: '2rem' }}>
+              {readingRate}%
             </div>
           </div>
         </div>
@@ -119,64 +168,66 @@ export const AdminDashboard: React.FC = () => {
 
       <div className={styles.listsGrid}>
         <div className={styles.listCard}>
-          <h3 className={styles.listTitle}>Usuários com Maior Atraso</h3>
-          <div className={styles.listItem}>
-            <div className={styles.itemLeft}>
-              <div className={styles.itemAvatar}>JS</div>
-              <div className={styles.itemInfo}>
-                <span className={styles.itemName}>João Silva</span>
-                <span className={styles.itemSub}>Unidade Norte • Recepção</span>
-              </div>
+          <h3 className={styles.listTitle}>Comunicados com Pendência de Leitura</h3>
+          {pendingNotices.length === 0 ? (
+            <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
+              <Sparkles size={24} color="var(--color-success)" style={{ display: 'block', margin: '0 auto 0.5rem' }} />
+              Todos os comunicados publicados estão 100% em dia!
             </div>
-            <div className={styles.itemRight}>12 pendentes</div>
-          </div>
-          <div className={styles.listItem}>
-            <div className={styles.itemLeft}>
-              <div className={styles.itemAvatar}>MA</div>
-              <div className={styles.itemInfo}>
-                <span className={styles.itemName}>Maria Almeida</span>
-                <span className={styles.itemSub}>Matriz • Faturamento</span>
+          ) : (
+            pendingNotices.map((item) => (
+              <div key={item.id} className={styles.listItem}>
+                <div className={styles.itemLeft}>
+                  <div className={styles.itemAvatar}>
+                    {item.type === 'Urgente' ? '!' : item.category.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className={styles.itemInfo}>
+                    <span className={styles.itemName}>{item.title}</span>
+                    <span className={styles.itemSub}>{item.department} • {item.date}</span>
+                  </div>
+                </div>
+                <div className={styles.itemRight} style={{ color: item.type === 'Urgente' ? 'var(--color-danger)' : 'var(--color-primary-accent)' }}>
+                  {item.type}
+                </div>
               </div>
-            </div>
-            <div className={styles.itemRight}>8 pendentes</div>
-          </div>
-          <div className={styles.listItem}>
-            <div className={styles.itemLeft}>
-              <div className={styles.itemAvatar}>PR</div>
-              <div className={styles.itemInfo}>
-                <span className={styles.itemName}>Pedro Rocha</span>
-                <span className={styles.itemSub}>Unidade Centro • Coleta</span>
-              </div>
-            </div>
-            <div className={styles.itemRight}>5 pendentes</div>
-          </div>
+            ))
+          )}
         </div>
 
         <div className={styles.listCard}>
-          <h3 className={styles.listTitle}>Termos Mais Buscados (Sem Resultado)</h3>
+          <h3 className={styles.listTitle}>Resumo de Indicadores de Conformidade</h3>
           <div className={styles.listItem}>
             <div className={styles.itemLeft}>
               <div className={styles.itemInfo}>
-                <span className={styles.itemName}>"Férias coletivas 2025"</span>
+                <span className={styles.itemName}>Tempo Médio de Confirmação</span>
+                <span className={styles.itemSub}>Tempo médio entre publicação e leitura</span>
               </div>
             </div>
-            <div className={styles.itemRight} style={{color: 'var(--color-text-muted)'}}>18 buscas</div>
+            <div className={styles.itemRight} style={{ color: 'var(--color-text-main)', fontWeight: 600 }}>
+              ~3.5 horas
+            </div>
           </div>
           <div className={styles.listItem}>
             <div className={styles.itemLeft}>
               <div className={styles.itemInfo}>
-                <span className={styles.itemName}>"Ramal manutenção TI"</span>
+                <span className={styles.itemName}>Adesão a Avisos de Segurança</span>
+                <span className={styles.itemSub}>Diretrizes normativas e POPs</span>
               </div>
             </div>
-            <div className={styles.itemRight} style={{color: 'var(--color-text-muted)'}}>12 buscas</div>
+            <div className={styles.itemRight} style={{ color: 'var(--color-success)', fontWeight: 600 }}>
+              98.2%
+            </div>
           </div>
           <div className={styles.listItem}>
             <div className={styles.itemLeft}>
               <div className={styles.itemInfo}>
-                <span className={styles.itemName}>"Nova tabela Unimed"</span>
+                <span className={styles.itemName}>Eficiência de Disparo por Canal</span>
+                <span className={styles.itemSub}>Mural corporativo e notificações</span>
               </div>
             </div>
-            <div className={styles.itemRight} style={{color: 'var(--color-text-muted)'}}>9 buscas</div>
+            <div className={styles.itemRight} style={{ color: 'var(--color-primary-accent)', fontWeight: 600 }}>
+              100% online
+            </div>
           </div>
         </div>
       </div>

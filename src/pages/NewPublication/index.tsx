@@ -19,7 +19,7 @@ export const NewPublication: React.FC = () => {
   const [files, setFiles] = useState<File[]>([]);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Sistemas');
-  const [type, setType] = useState('Informativo');
+  const [type, setType] = useState<'Informativo' | 'Urgente' | 'Atualização'>('Informativo');
   const [formError, setFormError] = useState('');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -66,7 +66,7 @@ export const NewPublication: React.FC = () => {
     fileInputRef.current?.click();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
       setFormError('Preencha o título do comunicado.');
@@ -76,23 +76,28 @@ export const NewPublication: React.FC = () => {
       setFormError('Escreva o conteúdo do comunicado.');
       return;
     }
+    if (files.length > 0) {
+      setFormError('O armazenamento seguro de anexos ainda não está habilitado. Remova os arquivos para publicar.');
+      return;
+    }
     setFormError('');
     
-    addComunicado({
-      title,
-      category,
-      type,
-      author: 'Matheus Alves (Admin)',
-      department: 'Administração',
-      content,
-      attachments: files.map(f => ({
-        name: f.name,
-        size: (f.size / 1024 / 1024).toFixed(2) + ' MB',
-        type: f.name.split('.').pop()?.toUpperCase() || 'ARQUIVO'
-      }))
-    });
-    
-    navigate('/comunicados');
+    try {
+      await addComunicado({
+        title,
+        category,
+        type,
+        content,
+        attachments: files.map(f => ({
+          name: f.name,
+          size: (f.size / 1024 / 1024).toFixed(2) + ' MB',
+          type: f.name.split('.').pop()?.toUpperCase() || 'ARQUIVO'
+        }))
+      });
+      navigate('/comunicados');
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Não foi possível publicar.');
+    }
   };
 
   return (
@@ -140,10 +145,15 @@ export const NewPublication: React.FC = () => {
 
             <div className={styles.formGroup}>
               <label className={styles.label} htmlFor="publication-type">Tipo de Aviso</label>
-              <select id="publication-type" className={styles.select} value={type} onChange={(e) => setType(e.target.value)}>
+              <select
+                id="publication-type"
+                className={styles.select}
+                value={type}
+                onChange={(e) => setType(e.target.value as 'Informativo' | 'Urgente' | 'Atualização')}
+              >
                 <option value="Informativo">Informativo</option>
                 <option value="Urgente">Urgente</option>
-                <option value="Normativo">Normativo (Compliance)</option>
+                <option value="Atualização">Atualização</option>
               </select>
             </div>
 

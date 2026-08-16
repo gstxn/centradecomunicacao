@@ -1,5 +1,11 @@
 # Melhorias aplicadas
 
+## Marco de comunicados persistentes
+
+- Comunicados e confirmações de leitura passaram a usar PostgreSQL e RLS.
+- Criação, listagem e confirmação de leitura foram expostas pela API com autorização por permissão.
+- O frontend deixou de armazenar comunicados no `localStorage`.
+
 ## Marco SaaS multiempresa — fundação
 
 - Criada API Node.js/TypeScript executável em `apps/api`.
@@ -9,14 +15,15 @@
 - Adicionados tenants demonstrativos “Central de Exames” e “GSS”.
 - Implementada resolução de empresa por sessão e `X-Company-ID`.
 - Implementado bloqueio de acesso cruzado com resposta HTTP 403.
-- Adicionados cinco testes automatizados de isolamento entre empresas.
+- Adicionados testes positivos e negativos de isolamento e autorização entre empresas.
 - Documentada a arquitetura e adicionadas variáveis de ambiente de exemplo.
 
 ## Qualidade técnica
 
 - Corrigidos todos os erros de TypeScript e lint.
 - Convertido `react-quill.d.ts` para UTF-8.
-- Adicionado `npm run check` para validar lint e build.
+- Adicionados `npm run check:static` para validações sem infraestrutura e `npm run check` para o pipeline completo com testes de integração.
+- Adicionado CI com PostgreSQL descartável.
 - Rotas carregadas sob demanda, reduzindo o pacote inicial.
 
 ## Funcionalidades

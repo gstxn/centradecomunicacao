@@ -1,11 +1,13 @@
-import React, { createContext, useEffect, useState, useContext } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { createNoticeRequest, getNotices, markNoticeReadRequest, type ApiNotice } from '../services/api';
+import { useAuth } from './AuthContext';
 
 export interface Comunicado {
-  id: number;
+  id: string;
   title: string;
   category: string;
-  type: string; // Urgente, Informativo, etc
+  type: 'Urgente' | 'Atualização' | 'Informativo';
   date: string;
   author: string;
   department: string;
@@ -15,74 +17,154 @@ export interface Comunicado {
   attachments?: { name: string; size: string; type: string }[];
 }
 
-interface ComunicadosContextType {
+type NewNotice = Omit<Comunicado, 'id' | 'read' | 'date' | 'author' | 'department'>;
+
+interface ComunicadosContextValue {
   comunicados: Comunicado[];
-  addComunicado: (comunicado: Omit<Comunicado, 'id' | 'read' | 'date'>) => void;
-  markAsRead: (id: number) => void;
-  deleteComunicado: (id: number) => void;
+  unreadCount: number;
+  urgentCount: number;
+  loading: boolean;
+  error: string;
+  refresh: () => Promise<void>;
+  addComunicado: (notice: NewNotice) => Promise<void>;
+  markAsRead: (id: string) => Promise<void>;
+  markAllAsRead: () => Promise<void>;
 }
 
-const initialMockData: Comunicado[] = [];
+const Context = createContext<ComunicadosContextValue | undefined>(undefined);
 
-const ComunicadosContext = createContext<ComunicadosContextType | undefined>(undefined);
+const mapNotice = (n: ApiNotice): Comunicado => ({
+  ...n,
+  type: n.type === 'urgent' ? 'Urgente' : n.type === 'update' ? 'Atualização' : 'Informativo',
+  date: new Intl.DateTimeFormat('pt-BR').format(new Date(n.createdAt)),
+  readAt: n.readAt ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(n.readAt)) : undefined
+});
 
-const STORAGE_KEY = 'central-comunicacao:comunicados:v2';
+export const ComunicadosProvider = ({ children }: { children: ReactNode }) => {
+  const { session, activeCompany } = useAuth();
+  const [comunicados, setComunicados] = useState<Comunicado[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-const loadComunicados = (): Comunicado[] => {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) as Comunicado[] : initialMockData;
-  } catch {
-    return initialMockData;
-  }
-};
+  const refresh = useCallback(async () => {
+    if (!session || !session.activeCompanyId) {
+      setComunicados([]);
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await getNotices(session);
+      setComunicados(response.data.map(mapNotice));
+      setError('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao carregar comunicados.');
+    } finally {
+      setLoading(false);
+    }
+  }, [session]);
 
-export const ComunicadosProvider: React.FC<{children: ReactNode}> = ({ children }) => {
-  const [comunicados, setComunicados] = useState<Comunicado[]>(loadComunicados);
-
+  // Initial fetch and fetch when active company changes
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(comunicados));
-  }, [comunicados]);
+    void refresh();
+  }, [refresh, activeCompany?.id]);
 
-  const addComunicado = (newCom: Omit<Comunicado, 'id' | 'read' | 'date'>) => {
-    const today = new Date();
-    const formattedDate = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
-    
-    const newEntry: Comunicado = {
-      ...newCom,
-      id: comunicados.length > 0 ? Math.max(...comunicados.map(c => c.id)) + 1 : 1,
-      read: false,
-      date: formattedDate
+  // Periodic refresh (every 30s) and on window focus for live notification synchronization
+  useEffect(() => {
+    if (!session) return;
+    const interval = setInterval(() => {
+      void refresh();
+    }, 30000);
+
+    const onFocus = () => {
+      void refresh();
     };
-    
-    // Adiciona no topo da lista
-    setComunicados(prev => [newEntry, ...prev]);
-  };
+    window.addEventListener('focus', onFocus);
 
-  const markAsRead = (id: number) => {
-    setComunicados(prev => prev.map(c => c.id === id ? {
-      ...c,
-      read: true,
-      readAt: c.readAt ?? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date())
-    } : c));
-  };
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [refresh, session]);
 
-  const deleteComunicado = (id: number) => {
-    setComunicados(prev => prev.filter(c => c.id !== id));
-  };
-
-  return (
-    <ComunicadosContext.Provider value={{ comunicados, addComunicado, markAsRead, deleteComunicado }}>
-      {children}
-    </ComunicadosContext.Provider>
+  const addComunicado = useCallback(
+    async (n: NewNotice) => {
+      if (!session) throw new Error('Sessão ausente.');
+      await createNoticeRequest(session, {
+        title: n.title,
+        category: n.category,
+        type: n.type === 'Urgente' ? 'urgent' : n.type === 'Atualização' ? 'update' : 'informative',
+        content: n.content ?? ''
+      });
+      await refresh();
+    },
+    [refresh, session]
   );
+
+  const markAsRead = useCallback(
+    async (id: string) => {
+      if (!session) return;
+      // Optimistic update for immediate UI reactivity
+      setComunicados((prev) =>
+        prev.map((c) =>
+          c.id === id
+            ? {
+                ...c,
+                read: true,
+                readAt: new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date())
+              }
+            : c
+        )
+      );
+      try {
+        await markNoticeReadRequest(session, id);
+      } catch {
+        // Rollback or refresh on failure
+        await refresh();
+      }
+    },
+    [refresh, session]
+  );
+
+  const markAllAsRead = useCallback(async () => {
+    if (!session) return;
+    const unread = comunicados.filter((c) => !c.read);
+    if (unread.length === 0) return;
+
+    const nowFormatted = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date());
+    // Optimistic update
+    setComunicados((prev) => prev.map((c) => ({ ...c, read: true, readAt: c.readAt ?? nowFormatted })));
+
+    try {
+      await Promise.all(unread.map((item) => markNoticeReadRequest(session, item.id)));
+    } catch {
+      await refresh();
+    }
+  }, [comunicados, refresh, session]);
+
+  const unreadCount = useMemo(() => comunicados.filter((c) => !c.read).length, [comunicados]);
+  const urgentCount = useMemo(() => comunicados.filter((c) => !c.read && c.type === 'Urgente').length, [comunicados]);
+
+  const value = useMemo<ComunicadosContextValue>(
+    () => ({
+      comunicados,
+      unreadCount,
+      urgentCount,
+      loading,
+      error,
+      refresh,
+      addComunicado,
+      markAsRead,
+      markAllAsRead
+    }),
+    [comunicados, unreadCount, urgentCount, loading, error, refresh, addComunicado, markAsRead, markAllAsRead]
+  );
+
+  return <Context.Provider value={value}>{children}</Context.Provider>;
 };
 
-// oxlint-disable-next-line react/only-export-components -- hook and provider intentionally share the private context
+// oxlint-disable-next-line react/only-export-components -- private provider hook
 export const useComunicados = () => {
-  const context = useContext(ComunicadosContext);
-  if (context === undefined) {
-    throw new Error('useComunicados must be used within a ComunicadosProvider');
-  }
-  return context;
+  const value = useContext(Context);
+  if (!value) throw new Error('useComunicados must be used within ComunicadosProvider');
+  return value;
 };

@@ -25,7 +25,7 @@ Abra o endereço apresentado pelo Vite. A tela de login opera em modo demonstrat
 ### API multiempresa
 
 ```bash
-npm run build:api
+npm run db:up
 npm run dev:api
 ```
 
@@ -40,7 +40,9 @@ npm run check
 npm run test:api
 ```
 
-O comando `check` executa lint e build em sequência.
+`npm run check:static` executa lint, typecheck e builds sem infraestrutura. `npm run check`
+também executa os testes de integração e, portanto, requer o PostgreSQL iniciado com
+`npm run db:up`. O CI cria um banco descartável e executa o pipeline completo.
 
 ## Estrutura
 
@@ -62,7 +64,8 @@ O comando `check` executa lint e build em sequência.
 - Busca global dinâmica em comunicados.
 - Listagem com busca, categoria e situação de leitura.
 - Publicação de comunicados durante a sessão.
-- Persistência local dos comunicados e confirmações de leitura.
+- Persistência multiempresa de comunicados e confirmações de leitura no PostgreSQL.
+- Sanitização allowlist do HTML no servidor e novamente na apresentação.
 - Sanitização conservadora do HTML produzido pelo editor.
 - Biblioteca, calendário, links, pendências, leituras e relatórios demonstrativos.
 - Foco visível, nomes acessíveis e modal de busca controlável pelo teclado.
@@ -74,7 +77,7 @@ Os seguintes itens dependem de serviços corporativos e ainda não estão implem
 
 - SSO/OIDC, validação de credenciais no servidor e recuperação real de senha.
 - Permissões por perfil, unidade e departamento.
-- API, banco de dados e armazenamento real de anexos.
+- Persistência real de comunicados, leituras, chamados e anexos.
 - Workflow de rascunho, aprovação e versionamento.
 - Auditoria imutável e relatórios oficiais.
 - Integração com e-mail, calendário e diretório corporativo.

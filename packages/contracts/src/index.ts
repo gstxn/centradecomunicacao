@@ -3,6 +3,7 @@ export type UserId = string;
 export type MembershipId = string;
 
 export type SystemRole = 'owner' | 'admin' | 'publisher' | 'manager' | 'employee' | 'auditor' | 'support';
+export type PermissionKey = 'company.manage' | 'users.view' | 'users.manage' | 'departments.manage' | 'notices.create' | 'notices.publish' | 'reports.view' | 'audit.view' | 'support.manage';
 
 export interface CompanySummary {
   id: CompanyId;
@@ -24,6 +25,7 @@ export interface MembershipSummary {
   userId: UserId;
   role: SystemRole;
   departmentIds: string[];
+  permissions: PermissionKey[];
   status: 'active' | 'invited' | 'suspended';
 }
 

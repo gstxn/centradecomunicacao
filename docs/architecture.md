@@ -44,8 +44,16 @@ Login
 | GSS | admin@gss.test | demo123 |
 | Ambas, como auditor | auditor@saas.test | demo123 |
 
-Os dados da API atual permanecem em memória para validar o domínio sem depender de infraestrutura externa. O próximo marco substitui o repositório em memória pelo PostgreSQL definido em `database/`.
+A API consulta o PostgreSQL com um papel de runtime sem privilégios de criação e sem
+`BYPASSRLS`. O papel que aplica o schema é separado do papel usado nas requisições. As
+sessões ainda permanecem em memória e devem migrar para um mecanismo compartilhado antes
+de executar mais de uma instância da API.
 
 ## Regra de implementação
 
 Nenhuma função de domínio deve aceitar apenas o ID de um recurso corporativo. Ela deve receber também um contexto de tenant validado ou executar a consulta dentro de uma transação que tenha definido `app.company_id`.
+
+O contexto de tenant é criado exclusivamente por `resolveTenant`. As consultas corporativas
+usam `withTenantTransaction`, que configura `app.company_id` localmente na mesma conexão.
+As tabelas corporativas usam `FORCE ROW LEVEL SECURITY`; portanto, esquecer o contexto
+resulta em negação de acesso, e não em leitura global.

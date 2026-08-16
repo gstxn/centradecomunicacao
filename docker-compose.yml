@@ -15,6 +15,9 @@ services:
       - ./database/002_demo_companies.sql:/docker-entrypoint-initdb.d/002_demo.sql:ro
       - ./database/003_demo_users.sql:/docker-entrypoint-initdb.d/003_users.sql:ro
       - ./database/004_comunicados_and_calendar.sql:/docker-entrypoint-initdb.d/004_comunicados_and_calendar.sql:ro
+      - ./database/005_runtime_security.sql:/docker-entrypoint-initdb.d/005_runtime_security.sql:ro
+      - ./database/006_notice_reads.sql:/docker-entrypoint-initdb.d/006_notice_reads.sql:ro
+      - ./database/007_auth_sessions.sql:/docker-entrypoint-initdb.d/007_auth_sessions.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U central_app -d central_comunicacao"]
       interval: 5s

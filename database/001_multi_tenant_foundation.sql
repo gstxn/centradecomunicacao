@@ -140,6 +140,7 @@ INSERT INTO permissions (key, description) VALUES
   ('notices.create', 'Criar comunicados'),
   ('notices.publish', 'Publicar comunicados'),
   ('reports.view', 'Visualizar relatórios'),
-  ('audit.view', 'Visualizar auditoria');
+  ('audit.view', 'Visualizar auditoria'),
+  ('support.manage', 'Gerenciar chamados de suporte');
 
 COMMIT;

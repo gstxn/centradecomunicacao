@@ -9,6 +9,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 1rem;
 }
 
 .title {
@@ -16,15 +17,17 @@
   font-weight: 700;
   color: var(--color-text-main);
   margin-bottom: 0.5rem;
+  letter-spacing: -0.02em;
 }
 
 .subtitle {
   color: var(--color-text-muted);
+  font-size: 0.95rem;
 }
 
 .searchBox {
   position: relative;
-  width: 300px;
+  width: 320px;
 }
 
 .searchIcon {
@@ -41,13 +44,63 @@
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
   background-color: var(--color-bg-card);
+  color: var(--color-text-main);
   outline: none;
   font-family: var(--font-family);
+  font-size: 0.88rem;
   transition: border-color 0.2s;
 }
 
 .searchInput:focus {
   border-color: var(--color-primary-accent);
+}
+
+.emptyState {
+  text-align: center;
+  padding: 4.5rem 2rem;
+  background-color: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px dashed var(--color-border);
+  color: var(--color-text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.emptyIcon {
+  color: var(--color-text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.emptyTitle {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-text-main);
+}
+
+.emptyDesc {
+  max-width: 380px;
+  line-height: 1.5;
+  font-size: 0.95rem;
+}
+
+.linkButton {
+  margin-top: 1rem;
+  padding: 0.6rem 1.2rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-body);
+  color: var(--color-text-main);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.linkButton:hover {
+  border-color: var(--color-primary-accent);
+  color: var(--color-primary-accent);
 }
 
 .timeline {
@@ -112,6 +165,7 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  gap: 1rem;
 }
 
 .cardTitle {
@@ -136,6 +190,7 @@
   display: flex;
   align-items: center;
   gap: 0.25rem;
+  white-space: nowrap;
 }
 
 @media (max-width: 640px) {
@@ -154,5 +209,9 @@
     width: 40px;
     height: 40px;
     border-width: 3px;
+  }
+  .cardHeader {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

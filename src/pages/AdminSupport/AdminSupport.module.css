@@ -32,12 +32,13 @@
 }
 
 .titleArea h1 {
-  font-family: 'Playfair Display', serif;
-  font-size: 32px;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
   color: var(--color-text-main);
   margin: 0 0 4px;
-  line-height: 1.1;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
 }
 
 .titleArea p {

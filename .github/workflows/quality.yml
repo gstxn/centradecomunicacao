@@ -1,0 +1,30 @@
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Start disposable PostgreSQL
+        run: docker compose up -d --wait
+      - name: Run static checks and integration tests
+        run: npm run check
+        env:
+          DATABASE_URL: postgresql://central_runtime:central_runtime_local_2026@localhost:5432/central_comunicacao
+      - name: Stop PostgreSQL
+        if: always()
+        run: docker compose down --volumes

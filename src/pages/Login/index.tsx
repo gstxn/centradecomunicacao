@@ -64,7 +64,7 @@ export const Login: React.FC = () => {
             <div><h2>Bem-vindo de volta</h2><p>Entre com suas credenciais corporativas.</p></div>
           </div>
 
-          <div className={styles.demoNotice}><strong>Ambiente multiempresa</strong><span>Use admin@central.test, admin@gss.test ou auditor@saas.test. Senha: demo123.</span></div>
+          <div className={styles.demoNotice}><strong>Ambiente Corporativo SaaS</strong><span>Acesso demonstrativo: <strong>admin@saas.test</strong> (Administrador do SaaS — cria empresas) ou <strong>admin@central.test</strong> (Admin Central de Exames). Senha: <code>demo123</code></span></div>
 
           <form onSubmit={handleLogin}>
             <div className={styles.inputGroup}>
