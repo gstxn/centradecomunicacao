@@ -8,7 +8,7 @@
     "dev:api": "npm run build:api && node --watch apps/api/dist/apps/api/src/server.js",
     "build:web": "tsc -b && vite build",
     "build:api": "tsc -p apps/api/tsconfig.json",
-    "build:serverless": "esbuild api/serverless.ts --bundle --platform=node --format=esm --external:pg-native --outfile=api/[...slug].js",
+    "build:serverless": "esbuild api/serverless.ts --bundle --platform=node --format=esm --packages=external --outfile=api/[...slug].js",
     "build": "npm run build:web && npm run build:api && npm run build:serverless",
     "lint": "oxlint",
     "test:api": "npm run build:api && node --test apps/api/dist/apps/api/test/*.test.js",
