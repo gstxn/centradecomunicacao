@@ -18,6 +18,7 @@ services:
       - ./database/005_runtime_security.sql:/docker-entrypoint-initdb.d/005_runtime_security.sql:ro
       - ./database/006_notice_reads.sql:/docker-entrypoint-initdb.d/006_notice_reads.sql:ro
       - ./database/007_auth_sessions.sql:/docker-entrypoint-initdb.d/007_auth_sessions.sql:ro
+      - ./database/008_saas_admin_flag.sql:/docker-entrypoint-initdb.d/008_saas_admin_flag.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U central_app -d central_comunicacao"]
       interval: 5s

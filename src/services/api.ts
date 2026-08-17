@@ -21,6 +21,7 @@ export interface ApiUser {
   id: string;
   name: string;
   email: string;
+  isSaaSAdmin: boolean;
   companies: ApiCompany[];
 }
 
@@ -106,5 +107,5 @@ export const createCompanyRequest = async (session: ApiSession, input: { name: s
 
 export const createTenantUserRequest = (
   session: ApiSession,
-  input: { name: string; email: string; password?: string; role: SystemRole; departmentIds?: string[] }
+  input: { name: string; email: string; password: string; role: SystemRole; departmentIds?: string[] }
 ) => tenantRequest<{ data: TenantUser }>('/users', session, 'POST', input);

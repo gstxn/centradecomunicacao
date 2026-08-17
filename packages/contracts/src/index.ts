@@ -33,6 +33,7 @@ export interface AuthenticatedUser {
   id: UserId;
   name: string;
   email: string;
+  isSaaSAdmin: boolean;
   companies: Array<CompanySummary & { membership: MembershipSummary }>;
 }
 

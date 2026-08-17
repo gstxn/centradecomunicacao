@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { authenticate, createNotice, hasPermission, listDepartments, listNotices, listTenantUsers, markNoticeRead, resolveTenant } from '../src/store.js';
 
+if (process.env.REQUIRE_DATABASE !== 'true') process.env.DEMO_MODE = 'true';
+
 const CENTRAL_ID = '11111111-1111-4111-8111-111111111111';
 
 test('administrador geral acessa o tenant Central de Exames', async () => {
@@ -22,6 +24,10 @@ test('tentativa de resolver tenant inexistente retorna null', async () => {
   assert.ok(login);
   assert.ok(await resolveTenant(login.accessToken, CENTRAL_ID));
   assert.equal(await resolveTenant(login.accessToken, '00000000-0000-0000-0000-000000000000'), null);
+});
+
+test('token arbitrário com 64 caracteres não cria uma sessão', async () => {
+  assert.equal(await resolveTenant('a'.repeat(64), CENTRAL_ID), null);
 });
 
 test('autorização deriva da matriz de permissões', async () => {
@@ -58,12 +64,13 @@ test('apenas o administrador do saas tem permissão de criar empresas', async ()
   assert.ok(auditorLogin);
   assert.equal(await isSaaSAdmin('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4'), false);
 
+  const suffix = Math.random().toString(36).slice(2, 7);
   const created = await createCompany('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', {
-    name: 'Hospital Santa Helena',
-    slug: 'hospital-santa-helena'
+    name: `Hospital Santa Helena ${suffix}`,
+    slug: `hospital-santa-helena-${suffix}`
   });
   assert.ok(created.id);
-  assert.equal(created.name, 'Hospital Santa Helena');
+  assert.ok(created.name.startsWith('Hospital Santa Helena'));
   assert.equal(created.membership.role, 'owner');
 
   const tenant = await resolveTenant(saasAdminLogin.accessToken, created.id);
@@ -73,7 +80,7 @@ test('apenas o administrador do saas tem permissão de criar empresas', async ()
 });
 
 test('criação de usuários na empresa por admin do saas e admin da empresa', async () => {
-  const { createTenantUser } = await import('../src/store.js');
+  const { createTenantUser, createCompany } = await import('../src/store.js');
 
   const centralAdminLogin = await authenticate('admin@central.test', 'demo123');
   assert.ok(centralAdminLogin);
@@ -84,34 +91,40 @@ test('criação de usuários na empresa por admin do saas e admin da empresa', a
   assert.equal(await hasPermission(tenant, 'users.manage'), true);
 
   // Cadastrar novo colaborador
+  const userSuffix = Math.random().toString(36).slice(2, 7);
   const newUser = await createTenantUser(tenant, {
-    name: 'Dr. Lucas Ferreira',
-    email: 'lucas.ferreira@central.test',
+    name: `Dr. Lucas Ferreira ${userSuffix}`,
+    email: `lucas.ferreira.${userSuffix}@central.test`,
+    password: 'SenhaTemporaria#2026',
     role: 'publisher'
   });
   assert.ok(newUser.id);
-  assert.equal(newUser.name, 'Dr. Lucas Ferreira');
+  assert.ok(newUser.name.startsWith('Dr. Lucas Ferreira'));
   assert.equal(newUser.role, 'publisher');
 
   // Listar usuários do tenant e conferir se está presente
   const users = await listTenantUsers(tenant);
-  assert.ok(users.some((u) => u.email === 'lucas.ferreira@central.test'));
+  assert.ok(users.some((u) => u.email === `lucas.ferreira.${userSuffix}@central.test`));
 
   // SaaS Admin criando usuário em nova empresa criada
-  const { createCompany } = await import('../src/store.js');
   const saasAdminLogin = await authenticate('admin@saas.test', 'demo123');
   assert.ok(saasAdminLogin);
-  const newComp = await createCompany('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', { name: 'Hospital Marieta', slug: 'hospital-marieta' });
+  const compSuffix = Math.random().toString(36).slice(2, 7);
+  const newComp = await createCompany('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', {
+    name: `Hospital Marieta ${compSuffix}`,
+    slug: `hospital-marieta-${compSuffix}`
+  });
   const marietaTenant = await resolveTenant(saasAdminLogin.accessToken, newComp.id);
   assert.ok(marietaTenant);
 
   const marietaUser = await createTenantUser(marietaTenant, {
     name: 'George Dandolini',
-    email: 'sobbianekge@marieta.com',
+    email: `sobbianekge.${compSuffix}@marieta.com`,
+    password: 'OutraSenhaForte#2026',
     role: 'admin'
   });
   assert.ok(marietaUser.id);
-  assert.equal(marietaUser.email, 'sobbianekge@marieta.com');
+  assert.equal(marietaUser.email, `sobbianekge.${compSuffix}@marieta.com`);
   const marietaUsers = await listTenantUsers(marietaTenant);
-  assert.ok(marietaUsers.some((u) => u.email === 'sobbianekge@marieta.com'));
+  assert.ok(marietaUsers.some((u) => u.email === `sobbianekge.${compSuffix}@marieta.com`));
 });

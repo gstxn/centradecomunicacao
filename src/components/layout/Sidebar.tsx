@@ -14,7 +14,6 @@ import {
   LayoutGrid,
   MessageSquare,
   Plus,
-  Settings2,
   ShieldCheck,
   Sparkles,
   Users,
@@ -51,7 +50,7 @@ const management = [
   { icon: Headphones, label: 'Monitoramento', path: '/admin/chamados', permission: 'support.manage' },
   { icon: Building2, label: 'Empresa e pessoas', path: '/admin/empresa', permission: 'users.view' },
   { icon: Gauge, label: 'Indicadores', path: '/admin/indicadores', permission: 'reports.view' },
-  { icon: Settings2, label: 'Configurações', path: '/links', permission: 'company.manage' },
+  { icon: Plus, label: 'Novo comunicado', path: '/admin/novo-comunicado', permission: 'notices.create' },
 ] satisfies Array<{ icon: typeof Headphones; label: string; path: string; permission: PermissionKey }>;
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {

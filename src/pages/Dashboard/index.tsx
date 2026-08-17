@@ -21,12 +21,15 @@ export const Dashboard: React.FC = () => {
   const totalLidos = totalLeituras - unread.length;
   const pulseScore = totalLeituras === 0 ? 100 : Math.round((totalLidos / totalLeituras) * 100);
 
-  const firstName = user?.name?.split(' ')[0] ?? 'Matheus';
+  const firstName = user?.name?.split(' ')[0] ?? 'Colaborador';
+  const now = new Date();
+  const formattedDate = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).format(now).toUpperCase();
+  const formattedTime = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(now);
 
   return <div className={styles.dashboard}>
     <section className={styles.intro}>
-      <div><span className={styles.eyebrow}>QUARTA, 12 DE AGOSTO <i/></span><h1>Bom dia, <em>{firstName}.</em></h1><p>O que está acontecendo na {activeCompany?.name ?? 'sua empresa'}, sem ruído.</p></div>
-      <div className={styles.status}><span className={styles.liveDot}/><div><strong>Operação normal</strong><small>Todos os sistemas disponíveis</small></div><span>08:42</span></div>
+      <div><span className={styles.eyebrow}>{formattedDate} <i/></span><h1>Bom dia, <em>{firstName}.</em></h1><p>O que está acontecendo na {activeCompany?.name ?? 'sua empresa'}, sem ruído.</p></div>
+      <div className={styles.status}><span className={styles.liveDot}/><div><strong>Operação normal</strong><small>Todos os sistemas disponíveis</small></div><span>{formattedTime}</span></div>
     </section>
 
     <section className={styles.bento}>

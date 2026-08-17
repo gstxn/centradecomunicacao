@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import {
   authenticate,
+  DatabaseUnavailableError,
   hasPermission,
   createNotice,
   createCompany,
@@ -20,6 +21,30 @@ import { sanitizeNoticeHtml } from './sanitize.js';
 const PORT = Number(process.env.API_PORT ?? 3333);
 const WEB_ORIGIN = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
 const MAX_BODY_BYTES = 64 * 1024;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_FAILURES = 5;
+
+interface LoginAttempt { failures: number; windowStartedAt: number; blockedUntil: number }
+const loginAttempts = new Map<string, LoginAttempt>();
+
+const loginAttemptKey = (request: IncomingMessage, email: string) =>
+  `${request.socket.remoteAddress ?? 'unknown'}:${email.toLowerCase().trim()}`;
+
+const loginRetryAfter = (key: string, now = Date.now()) => {
+  const attempt = loginAttempts.get(key);
+  if (!attempt || attempt.blockedUntil <= now) return 0;
+  return Math.max(1, Math.ceil((attempt.blockedUntil - now) / 1000));
+};
+
+const registerLoginFailure = (key: string, now = Date.now()) => {
+  const current = loginAttempts.get(key);
+  const attempt = !current || now - current.windowStartedAt >= LOGIN_WINDOW_MS
+    ? { failures: 0, windowStartedAt: now, blockedUntil: 0 }
+    : current;
+  attempt.failures += 1;
+  if (attempt.failures >= LOGIN_MAX_FAILURES) attempt.blockedUntil = now + LOGIN_WINDOW_MS;
+  loginAttempts.set(key, attempt);
+};
 
 class HttpError extends Error {
   constructor(readonly statusCode: number, readonly code: string, message: string) {
@@ -75,6 +100,8 @@ const requireSession = async (request: IncomingMessage, response: ServerResponse
 };
 
 const requireTenant = async (request: IncomingMessage, response: ServerResponse) => {
+
+
   const auth = await requireSession(request, response);
   if (!auth) return null;
   const companyIdHeader = request.headers['x-company-id'];
@@ -91,30 +118,49 @@ const requireTenant = async (request: IncomingMessage, response: ServerResponse)
   return tenant;
 };
 
-export const app = createServer(async (request, response) => {
+export const handleRequest = async (request: IncomingMessage, response: ServerResponse) => {
   try {
     if (request.method === 'OPTIONS') return sendJson(response, 204, null);
     const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
+    let pathname = url.pathname;
+    if (pathname.startsWith('/api')) {
+      pathname = pathname.slice(4) || '/';
+    }
 
-    if (request.method === 'GET' && url.pathname === '/health') {
+    if (request.method === 'GET' && pathname === '/health') {
       return sendJson(response, 200, { status: 'ok', service: 'central-comunicacao-api' });
     }
 
-    if (request.method === 'POST' && url.pathname === '/auth/login') {
+    if (request.method === 'POST' && pathname === '/auth/login') {
       const body = await readJson(request);
-      const result = await authenticate(String(body.email ?? ''), String(body.password ?? ''));
-      return result
-        ? sendJson(response, 200, { user:result.user, activeCompanyId:result.activeCompanyId }, { 'set-cookie':`session=${result.accessToken}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800${process.env.NODE_ENV==='production'?'; Secure':''}` })
-        : sendJson(response, 401, { error: 'INVALID_CREDENTIALS', message: 'E-mail ou senha inválidos.', statusCode: 401 });
+      const email = String(body.email ?? '').trim().toLowerCase();
+      const key = loginAttemptKey(request, email);
+      const retryAfter = loginRetryAfter(key);
+      if (retryAfter > 0) {
+        return sendJson(response, 429, {
+          error: 'TOO_MANY_LOGIN_ATTEMPTS',
+          message: 'Muitas tentativas de acesso. Tente novamente mais tarde.',
+          statusCode: 429
+        }, { 'retry-after': String(retryAfter) });
+      }
+
+      const result = await authenticate(email, String(body.password ?? ''));
+      if (!result) {
+        registerLoginFailure(key);
+        return sendJson(response, 401, { error: 'INVALID_CREDENTIALS', message: 'E-mail ou senha inválidos.', statusCode: 401 });
+      }
+
+      loginAttempts.delete(key);
+      return sendJson(response, 200, { user:result.user, activeCompanyId:result.activeCompanyId }, { 'set-cookie':`session=${result.accessToken}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800${process.env.NODE_ENV==='production'?'; Secure':''}` });
     }
 
-    if (request.method === 'GET' && url.pathname === '/companies') {
+    if (request.method === 'GET' && pathname === '/companies') {
       const auth = await requireSession(request, response);
       if (!auth) return;
       return sendJson(response, 200, { data: await listCompaniesForUser(auth.session.userId) });
     }
 
-    if (request.method === 'POST' && url.pathname === '/companies') {
+    if (request.method === 'POST' && pathname === '/companies') {
       const auth = await requireSession(request, response);
       if (!auth) return;
 
@@ -142,13 +188,13 @@ export const app = createServer(async (request, response) => {
       return sendJson(response, 201, { data: newCompany });
     }
 
-    if (request.method === 'GET' && url.pathname === '/departments') {
+    if (request.method === 'GET' && pathname === '/departments') {
       const tenant = await requireTenant(request, response);
       if (!tenant) return;
       return sendJson(response, 200, { data: await listDepartments(tenant) });
     }
 
-    if (request.method === 'GET' && url.pathname === '/users') {
+    if (request.method === 'GET' && pathname === '/users') {
       const tenant = await requireTenant(request, response);
       if (!tenant) return;
       if (!await hasPermission(tenant, 'users.view')) {
@@ -157,7 +203,7 @@ export const app = createServer(async (request, response) => {
       return sendJson(response, 200, { data: await listTenantUsers(tenant) });
     }
 
-    if (request.method === 'POST' && url.pathname === '/users') {
+    if (request.method === 'POST' && pathname === '/users') {
       const tenant = await requireTenant(request, response);
       if (!tenant) return;
       if (!await hasPermission(tenant, 'users.manage') && !await isSaaSAdmin(tenant.userId)) {
@@ -176,6 +222,9 @@ export const app = createServer(async (request, response) => {
       if (!email || !email.includes('@') || email.length > 120) {
         throw new HttpError(400, 'INVALID_USER_EMAIL', 'E-mail inválido.');
       }
+      if (!password || password.length < 12 || password.length > 128) {
+        throw new HttpError(400, 'INVALID_USER_PASSWORD', 'A senha provisória deve ter entre 12 e 128 caracteres.');
+      }
 
       const allowedRoles = ['owner', 'admin', 'publisher', 'manager', 'employee', 'auditor', 'support'];
       if (!allowedRoles.includes(role)) {
@@ -193,16 +242,16 @@ export const app = createServer(async (request, response) => {
       return sendJson(response, 201, { data: createdUser });
     }
 
-    if (request.method === 'POST' && url.pathname === '/auth/logout') {
+    if (request.method === 'POST' && pathname === '/auth/logout') {
       const token=bearerToken(request); if(token) await revokeSession(token);
       return sendJson(response,204,null,{'set-cookie':'session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0'});
     }
 
-    if (request.method === 'GET' && url.pathname === '/notices') {
+    if (request.method === 'GET' && pathname === '/notices') {
       const tenant = await requireTenant(request, response); if (!tenant) return;
       return sendJson(response, 200, { data: await listNotices(tenant) });
     }
-    if (request.method === 'POST' && url.pathname === '/notices') {
+    if (request.method === 'POST' && pathname === '/notices') {
       const tenant = await requireTenant(request, response); if (!tenant) return;
       if (!await hasPermission(tenant, 'notices.create')) return sendJson(response, 403, { error:'PERMISSION_DENIED', message:'Permissão notices.create necessária.', statusCode:403 });
       const body=await readJson(request); const title=String(body.title??'').trim(); const rawContent=String(body.content??'').trim(); const content=sanitizeNoticeHtml(rawContent);
@@ -210,11 +259,19 @@ export const app = createServer(async (request, response) => {
       const type=String(body.type??'informative'); if(!['urgent','informative','update'].includes(type)) throw new HttpError(400,'INVALID_NOTICE_TYPE','Tipo inválido.');
       return sendJson(response,201,await createNotice(tenant,{title,content,type,category:String(body.category??'Geral').slice(0,80)}));
     }
-    const readMatch=url.pathname.match(/^\/notices\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/read$/i);
+    const readMatch=pathname.match(/^\/notices\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/read$/i);
     if(request.method==='POST' && readMatch?.[1]) { const tenant=await requireTenant(request,response); if(!tenant)return; const result=await markNoticeRead(tenant,readMatch[1]); return result?sendJson(response,200,result):sendJson(response,404,{error:'NOT_FOUND',message:'Comunicado não encontrado.',statusCode:404}); }
 
     return sendJson(response, 404, { error: 'NOT_FOUND', message: 'Rota não encontrada.', statusCode: 404 });
   } catch (error) {
+    if (error instanceof DatabaseUnavailableError) {
+      return sendJson(response, 503, {
+        error: 'DATABASE_UNAVAILABLE',
+        message: 'Serviço temporariamente indisponível.',
+        statusCode: 503
+      }, { 'retry-after': '30' });
+    }
+
     if (error instanceof HttpError) {
       return sendJson(response, error.statusCode, { error: error.code, message: error.message, statusCode: error.statusCode });
     }
@@ -222,9 +279,11 @@ export const app = createServer(async (request, response) => {
     console.error(error);
     return sendJson(response, 500, { error: 'INTERNAL_ERROR', message: 'Erro interno da API.', statusCode: 500 });
   }
-});
+};
 
-if (process.env.NODE_ENV !== 'test') {
+export const app = createServer(handleRequest);
+
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
   app.listen(PORT, '127.0.0.1', () => {
     console.log(`API multiempresa disponível em http://127.0.0.1:${PORT}`);
   });

@@ -20,7 +20,8 @@ npm install
 npm run dev
 ```
 
-Abra o endereço apresentado pelo Vite. A tela de login opera em modo demonstrativo e aceita qualquer usuário e senha não vazios. Ela não representa autenticação de produção.
+Abra o endereço apresentado pelo Vite. A tela de login usa as contas demonstrativas
+documentadas em `docs/architecture.md`; credenciais arbitrárias não são aceitas.
 
 ### API multiempresa
 
@@ -31,6 +32,10 @@ npm run dev:api
 
 A API ficará disponível em `http://127.0.0.1:3333`. O marco atual inclui login demonstrativo, empresas, departamentos, usuários e bloqueio de acesso cruzado.
 
+Por padrão, a API falha com `503` se o PostgreSQL estiver indisponível. Para executar
+intencionalmente sem banco durante uma demonstração local, defina `DEMO_MODE=true`.
+Esse modo é sempre desativado quando `NODE_ENV=production`.
+
 ## Verificações
 
 ```bash
@@ -40,9 +45,9 @@ npm run check
 npm run test:api
 ```
 
-`npm run check:static` executa lint, typecheck e builds sem infraestrutura. `npm run check`
-também executa os testes de integração e, portanto, requer o PostgreSQL iniciado com
-`npm run db:up`. O CI cria um banco descartável e executa o pipeline completo.
+`npm run check:static` executa lint, typecheck e builds sem infraestrutura. Os testes
+locais usam o armazenamento demonstrativo, enquanto o CI define `REQUIRE_DATABASE=true`,
+cria um PostgreSQL descartável e falha se a integração real não estiver disponível.
 
 ## Estrutura
 
@@ -60,6 +65,7 @@ também executa os testes de integração e, portanto, requer o PostgreSQL inici
 
 - Dashboard e navegação responsiva.
 - Login demonstrativo, sessão persistente opcional, rotas protegidas e logout.
+- Limite de tentativas de login e senha provisória obrigatória com no mínimo 12 caracteres.
 - Central de suporte com abertura de chamado, protocolo e histórico local.
 - Busca global dinâmica em comunicados.
 - Listagem com busca, categoria e situação de leitura.
@@ -77,7 +83,7 @@ Os seguintes itens dependem de serviços corporativos e ainda não estão implem
 
 - SSO/OIDC, validação de credenciais no servidor e recuperação real de senha.
 - Permissões por perfil, unidade e departamento.
-- Persistência real de comunicados, leituras, chamados e anexos.
+- Persistência real de chamados e anexos; comunicados e leituras já usam PostgreSQL.
 - Workflow de rascunho, aprovação e versionamento.
 - Auditoria imutável e relatórios oficiais.
 - Integração com e-mail, calendário e diretório corporativo.

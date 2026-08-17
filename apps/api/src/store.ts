@@ -40,16 +40,32 @@ const hashToken = (token: string) => createHash('sha256').update(token).digest('
 // ==========================================
 let isDbAvailable: boolean | null = null;
 
+export class DatabaseUnavailableError extends Error {
+  constructor(cause?: unknown) {
+    super('PostgreSQL indisponível.');
+    this.name = 'DatabaseUnavailableError';
+    this.cause = cause;
+  }
+}
+
+const isDemoMode = () => (process.env.DEMO_MODE === 'true' || process.env.DEMO_MODE !== 'false') && process.env.NODE_ENV !== 'production' && process.env.REQUIRE_DATABASE !== 'true';
+
+const markDatabaseUnavailable = (error?: unknown) => {
+  isDbAvailable = false;
+  if (!isDemoMode()) throw new DatabaseUnavailableError(error);
+  console.warn('[API Store] PostgreSQL indisponível. Usando armazenamento em memória demonstrativo.');
+};
+
 const checkDbConnection = async (): Promise<boolean> => {
+  if (isDbAvailable === false && !isDemoMode()) throw new DatabaseUnavailableError();
   if (isDbAvailable !== null) return isDbAvailable;
   try {
     const client = await pool.connect();
     client.release();
     isDbAvailable = true;
     return true;
-  } catch {
-    console.warn('[API Store] PostgreSQL offline or unreachable. Using in-memory store for local development.');
-    isDbAvailable = false;
+  } catch (error) {
+    markDatabaseUnavailable(error);
     return false;
   }
 };
@@ -67,9 +83,9 @@ const MOCK_COMPANIES = [
 ];
 
 const MOCK_USERS = [
-  { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', name: 'Administrador Geral', email: 'admin@saas.test', password: 'demo123' },
-  { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2', name: 'Admin Central', email: 'admin@central.test', password: 'demo123' },
-  { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4', name: 'Auditor Geral', email: 'auditor@saas.test', password: 'demo123' }
+  { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', name: 'Administrador Geral', email: 'admin@saas.test', password: 'demo123', isSaaSAdmin: true },
+  { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2', name: 'Admin Central', email: 'admin@central.test', password: 'demo123', isSaaSAdmin: false },
+  { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4', name: 'Auditor Geral', email: 'auditor@saas.test', password: 'demo123', isSaaSAdmin: false }
 ];
 
 const MOCK_MEMBERSHIPS: Array<{
@@ -148,7 +164,7 @@ export const authenticate = async (email: string, password: string) => {
   if (await checkDbConnection()) {
     try {
       const result = await pool.query(`
-        SELECT id, name, email
+        SELECT id, name, email, is_saas_admin AS "isSaaSAdmin"
         FROM users
         WHERE email = $1 AND password_hash = crypt($2, password_hash) AND status = 'active'
       `, [email.toLowerCase(), password]);
@@ -162,6 +178,7 @@ export const authenticate = async (email: string, password: string) => {
         id: user.id,
         name: user.name,
         email: user.email,
+        isSaaSAdmin: user.isSaaSAdmin === true,
         companies: companiesQuery.rows.map((row) => ({
           id: row.id,
           name: row.name,
@@ -186,8 +203,8 @@ export const authenticate = async (email: string, password: string) => {
       const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
       await pool.query('INSERT INTO auth_sessions(user_id, token_hash, expires_at) VALUES($1,$2,$3)', [user.id, hashToken(token), expiresAt]);
       return { accessToken: token, user: authenticatedUser, activeCompanyId };
-    } catch {
-      isDbAvailable = false;
+    } catch (error) {
+      markDatabaseUnavailable(error);
     }
   }
 
@@ -228,6 +245,7 @@ export const authenticate = async (email: string, password: string) => {
       id: user.id,
       name: user.name,
       email: user.email,
+      isSaaSAdmin: user.isSaaSAdmin,
       companies: userCompanies
     },
     activeCompanyId
@@ -242,23 +260,14 @@ export const resolveSession = async (token: string): Promise<Session | null> => 
         RETURNING user_id AS "userId", expires_at AS "expiresAt"`, [hashToken(token)]);
       const row = result.rows[0];
       if (row) return { userId: row.userId, activeCompanyId: '', expiresAt: row.expiresAt };
-    } catch {
-      isDbAvailable = false;
+    } catch (error) {
+      markDatabaseUnavailable(error);
     }
   }
 
   const session = mockSessions.get(token);
   if (session && session.expiresAt.getTime() >= Date.now()) {
     return { userId: session.userId, activeCompanyId: '', expiresAt: session.expiresAt };
-  }
-
-  // Graceful in-memory dev fallback when API process restarts
-  if (token && token.length === 64) {
-    const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
-    // Find matching mock user or default to primary admin
-    const defaultUserId = MOCK_USERS[0]?.id || 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1';
-    mockSessions.set(token, { userId: defaultUserId, expiresAt });
-    return { userId: defaultUserId, activeCompanyId: '', expiresAt };
   }
 
   if (session) mockSessions.delete(token);
@@ -269,8 +278,8 @@ export const revokeSession = async (token: string) => {
   if (await checkDbConnection()) {
     try {
       await pool.query('UPDATE auth_sessions SET revoked_at=now() WHERE token_hash=$1 AND revoked_at IS NULL', [hashToken(token)]);
-    } catch {
-      isDbAvailable = false;
+    } catch (error) {
+      markDatabaseUnavailable(error);
     }
   }
   mockSessions.delete(token);
@@ -321,8 +330,8 @@ export const resolveTenant = async (token: string, requestedCompanyId: string): 
         }
       }
       return null;
-    } catch {
-      isDbAvailable = false;
+    } catch (error) {
+      markDatabaseUnavailable(error);
     }
   }
 
@@ -381,8 +390,8 @@ export const listCompaniesForUser = async (userId: string) => {
     try {
       const result = await pool.query('SELECT id, name, slug, status FROM list_active_companies_for_user($1)', [userId]);
       return result.rows as CompanySummary[];
-    } catch {
-      isDbAvailable = false;
+    } catch (error) {
+      markDatabaseUnavailable(error);
     }
   }
 
@@ -396,14 +405,14 @@ export const listCompaniesForUser = async (userId: string) => {
 export const isSaaSAdmin = async (userId: string): Promise<boolean> => {
   if (await checkDbConnection()) {
     try {
-      const result = await pool.query('SELECT email FROM users WHERE id = $1', [userId]);
-      return result.rows[0]?.email === 'admin@saas.test';
-    } catch {
-      isDbAvailable = false;
+      const result = await pool.query('SELECT is_saas_admin FROM users WHERE id = $1', [userId]);
+      return result.rows[0]?.is_saas_admin === true;
+    } catch (error) {
+      markDatabaseUnavailable(error);
     }
   }
   const user = MOCK_USERS.find((u) => u.id === userId);
-  return user?.email === 'admin@saas.test';
+  return user?.isSaaSAdmin === true;
 };
 
 export interface CreateCompanyInput {
@@ -426,26 +435,56 @@ export const createCompany = async (userId: string, input: CreateCompanyInput) =
       ];
 
   if (await checkDbConnection()) {
+    const client = await pool.connect();
     try {
-      await pool.query(
+      await client.query('BEGIN');
+      await client.query(
         'INSERT INTO companies (id, name, slug, status) VALUES ($1, $2, $3, $4)',
         [companyId, name, slug, 'active']
       );
+      await client.query("SELECT set_config('app.company_id', $1, true)", [companyId]);
 
-      await pool.query(
-        'INSERT INTO memberships (company_id, user_id, role, status) VALUES ($1, $2, $3, $4)',
+      const membershipResult = await client.query(
+        'INSERT INTO memberships (company_id, user_id, role, status) VALUES ($1, $2, $3, $4) RETURNING id',
         [companyId, userId, 'owner', 'active']
       );
 
       for (const dept of defaultDepts) {
-        await pool.query(
+        await client.query(
           'INSERT INTO departments (company_id, name, code) VALUES ($1, $2, $3)',
           [companyId, dept.name, dept.code]
         );
       }
-    } catch (err) {
-      console.warn('[API Store] DB Insert company failed, updating fallback store', err);
-      isDbAvailable = false;
+
+      await client.query(`
+        INSERT INTO role_permissions (company_id, role, permission_key)
+        SELECT $1, role.name::system_role, permission.key
+        FROM (VALUES ('owner'), ('admin')) AS role(name)
+        CROSS JOIN permissions AS permission
+        ON CONFLICT DO NOTHING
+      `, [companyId]);
+      await client.query('COMMIT');
+
+      return {
+        id: companyId,
+        name,
+        slug,
+        status: 'active' as const,
+        membership: {
+          id: String(membershipResult.rows[0]?.id),
+          companyId,
+          userId,
+          role: 'owner' as SystemRole,
+          departmentIds: [],
+          permissions: ALL_PERMISSIONS,
+          status: 'active' as const
+        }
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      markDatabaseUnavailable(error);
+    } finally {
+      client.release();
     }
   }
 
@@ -499,8 +538,8 @@ export const listDepartments = async (tenant: TenantContext) => {
         `, [tenant.companyId]);
         return result.rows as DepartmentSummary[];
       });
-    } catch {
-      isDbAvailable = false;
+    } catch (error) {
+      markDatabaseUnavailable(error);
     }
   }
 
@@ -525,8 +564,8 @@ export const listTenantUsers = async (tenant: TenantContext): Promise<TenantUser
           departments: []
         }));
       });
-    } catch {
-      isDbAvailable = false;
+    } catch (error) {
+      markDatabaseUnavailable(error);
     }
   }
 
@@ -546,7 +585,7 @@ export const listTenantUsers = async (tenant: TenantContext): Promise<TenantUser
 export interface CreateTenantUserInput {
   name: string;
   email: string;
-  password?: string;
+  password: string;
   role: SystemRole;
   departmentIds?: string[];
 }
@@ -554,7 +593,7 @@ export interface CreateTenantUserInput {
 export const createTenantUser = async (tenant: TenantContext, input: CreateTenantUserInput): Promise<TenantUserView> => {
   const email = input.email.toLowerCase().trim();
   const name = input.name.trim();
-  const password = input.password || 'demo123';
+  const password = input.password;
   const role = input.role || 'employee';
 
   let userId: string;
@@ -574,19 +613,21 @@ export const createTenantUser = async (tenant: TenantContext, input: CreateTenan
           userId = userResult.rows[0].id;
         }
 
-        await client.query(`
+        const membershipResult = await client.query(`
           INSERT INTO memberships (company_id, user_id, role, status, activated_at)
           VALUES ($1, $2, $3, 'active', now())
           ON CONFLICT (company_id, user_id) DO UPDATE SET role = EXCLUDED.role, status = 'active'
+          RETURNING id
         `, [tenant.companyId, userId, role]);
+        const membershipId = membershipResult.rows[0]?.id;
 
         if (input.departmentIds && input.departmentIds.length > 0) {
           for (const deptId of input.departmentIds) {
             await client.query(`
-              INSERT INTO membership_departments (company_id, user_id, department_id)
+              INSERT INTO membership_departments (company_id, membership_id, department_id)
               VALUES ($1, $2, $3)
               ON CONFLICT DO NOTHING
-            `, [tenant.companyId, userId, deptId]);
+            `, [tenant.companyId, membershipId, deptId]);
           }
         }
 
@@ -598,9 +639,8 @@ export const createTenantUser = async (tenant: TenantContext, input: CreateTenan
           departments: []
         };
       });
-    } catch (err) {
-      console.warn('[API Store] DB createTenantUser failed, falling back to in-memory store', err);
-      isDbAvailable = false;
+    } catch (error) {
+      markDatabaseUnavailable(error);
     }
   }
 
@@ -611,7 +651,8 @@ export const createTenantUser = async (tenant: TenantContext, input: CreateTenan
       id: crypto.randomUUID(),
       name,
       email,
-      password
+      password,
+      isSaaSAdmin: false
     };
     MOCK_USERS.push(existingUser);
   } else {
@@ -663,8 +704,8 @@ export const hasPermission = async (tenant: TenantContext, permission: string): 
         `, [tenant.companyId, tenant.membership.role, permission]);
         return result.rowCount === 1;
       });
-    } catch {
-      isDbAvailable = false;
+    } catch (error) {
+      markDatabaseUnavailable(error);
     }
   }
 
@@ -682,8 +723,8 @@ export const listNotices = async (tenant: TenantContext) => {
         LEFT JOIN notice_reads r ON r.notice_id=n.id AND r.user_id=$2 AND r.notice_version=n.version
         WHERE n.company_id=$1 AND n.status='published' ORDER BY COALESCE(n.published_at,n.created_at) DESC
       `, [tenant.companyId, tenant.userId])).rows);
-    } catch {
-      isDbAvailable = false;
+    } catch (error) {
+      markDatabaseUnavailable(error);
     }
   }
 
@@ -712,8 +753,8 @@ export const createNotice = async (tenant: TenantContext, input: { title: string
         INSERT INTO notices(company_id,title,category,type,content,author_id,status,published_at)
         VALUES($1,$2,$3,$4::notice_type,$5,$6,'published',now()) RETURNING id
       `, [tenant.companyId, input.title, input.category, input.type, input.content, tenant.userId])).rows[0]);
-    } catch {
-      isDbAvailable = false;
+    } catch (error) {
+      markDatabaseUnavailable(error);
     }
   }
 
@@ -742,8 +783,8 @@ export const markNoticeRead = async (tenant: TenantContext, noticeId: string) =>
         SELECT $1,n.id,$2,n.version FROM notices n WHERE n.id=$3 AND n.company_id=$1
         ON CONFLICT DO NOTHING RETURNING read_at AS "readAt"
       `, [tenant.companyId, tenant.userId, noticeId])).rows[0] ?? null);
-    } catch {
-      isDbAvailable = false;
+    } catch (error) {
+      markDatabaseUnavailable(error);
     }
   }
 

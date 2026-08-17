@@ -27,7 +27,7 @@ export const TenantAdmin: React.FC = () => {
   const [isSubmittingUser, setIsSubmittingUser] = useState(false);
   const [userFeedback, setUserFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const isSaaSAdmin = user?.email === 'admin@saas.test';
+  const isSaaSAdmin = user?.isSaaSAdmin === true;
   const canManageUsers = isSaaSAdmin || activeCompany?.membership?.role === 'owner' || activeCompany?.membership?.role === 'admin';
 
   useEffect(() => {
@@ -87,7 +87,7 @@ export const TenantAdmin: React.FC = () => {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!session || !newUserName.trim() || !newUserEmail.trim()) return;
+    if (!session || !newUserName.trim() || !newUserEmail.trim() || newUserPassword.length < 12) return;
 
     setIsSubmittingUser(true);
     setUserFeedback(null);
@@ -96,7 +96,7 @@ export const TenantAdmin: React.FC = () => {
       const response = await createTenantUserRequest(session, {
         name: newUserName.trim(),
         email: newUserEmail.trim(),
-        password: newUserPassword.trim() || 'demo123',
+        password: newUserPassword,
         role: newUserRole,
         departmentIds: newUserDepts
       });
@@ -325,18 +325,22 @@ export const TenantAdmin: React.FC = () => {
               </div>
 
               <div className={styles.formGroup}>
-                <label htmlFor="user-password">Senha Provisória (opcional)</label>
+                <label htmlFor="user-password">Senha Provisória *</label>
                 <div className={styles.inputWithIcon}>
                   <Lock size={17} aria-hidden="true" />
                   <input
                     id="user-password"
-                    type="text"
-                    placeholder="Padrão: demo123"
+                    type="password"
+                    placeholder="Mínimo de 12 caracteres"
                     value={newUserPassword}
                     onChange={(e) => setNewUserPassword(e.target.value)}
+                    minLength={12}
+                    maxLength={128}
+                    autoComplete="new-password"
+                    required
                   />
                 </div>
-                <small className={styles.helperText}>Se deixado em branco, a senha padrão será <code>demo123</code>.</small>
+                <small className={styles.helperText}>Use pelo menos 12 caracteres. Não existe mais senha padrão.</small>
               </div>
 
               <div className={styles.formGroup}>
@@ -385,7 +389,7 @@ export const TenantAdmin: React.FC = () => {
                 <button
                   type="submit"
                   className={styles.submitBtn}
-                  disabled={isSubmittingUser || !newUserName.trim() || !newUserEmail.trim()}
+                  disabled={isSubmittingUser || !newUserName.trim() || !newUserEmail.trim() || newUserPassword.length < 12}
                 >
                   {isSubmittingUser ? 'Cadastrando...' : 'Cadastrar Usuário →'}
                 </button>

@@ -25,6 +25,7 @@ jobs:
         run: npm run check
         env:
           DATABASE_URL: postgresql://central_runtime:central_runtime_local_2026@localhost:5432/central_comunicacao
+          REQUIRE_DATABASE: 'true'
       - name: Stop PostgreSQL
         if: always()
         run: docker compose down --volumes

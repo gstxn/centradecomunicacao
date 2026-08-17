@@ -76,10 +76,6 @@ export const NewPublication: React.FC = () => {
       setFormError('Escreva o conteúdo do comunicado.');
       return;
     }
-    if (files.length > 0) {
-      setFormError('O armazenamento seguro de anexos ainda não está habilitado. Remova os arquivos para publicar.');
-      return;
-    }
     setFormError('');
     
     try {
