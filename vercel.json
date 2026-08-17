@@ -3,6 +3,10 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/(.*)",
+      "destination": "/api/[...slug]"
+    },
+    {
       "source": "/((?!api|favicon.ico|assets).*)",
       "destination": "/index.html"
     }
