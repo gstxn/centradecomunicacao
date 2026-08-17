@@ -284,7 +284,12 @@ export const handleRequest = async (request: IncomingMessage, response: ServerRe
 
 export const app = createServer(handleRequest);
 
-if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
+const isMain = Boolean(process.argv[1] && (
+  process.argv[1].endsWith('server.js') || 
+  process.argv[1].endsWith('server.ts')
+) && !process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME && process.env.NODE_ENV !== 'test');
+
+if (isMain) {
   app.listen(PORT, '127.0.0.1', () => {
     console.log(`API multiempresa disponível em http://127.0.0.1:${PORT}`);
   });

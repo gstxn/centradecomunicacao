@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { handleRequest } from '../apps/api/src/server.js';
+import { handleRequest } from '../apps/api/dist/apps/api/src/server.js';
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   return handleRequest(req, res);
