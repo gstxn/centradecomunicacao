@@ -52,21 +52,27 @@ class HttpError extends Error {
   }
 }
 
-const sendJson = (response: ServerResponse, statusCode: number, body: unknown, headers:Record<string,string>={}) => {
+const sendJson = (response: ServerResponse, statusCode: number, body: unknown, headers: Record<string, string> = {}) => {
+  if (response.headersSent) return;
+  const origin = typeof response.getHeader === 'function' ? (response.getHeader('origin') || WEB_ORIGIN) : WEB_ORIGIN;
   response.writeHead(statusCode, {
     'content-type': 'application/json; charset=utf-8',
-    'access-control-allow-origin': WEB_ORIGIN,
+    'access-control-allow-origin': Array.isArray(origin) ? origin[0] : (origin || '*'),
     'access-control-allow-headers': 'authorization, content-type, x-company-id',
     'access-control-allow-methods': 'GET, POST, OPTIONS',
-    'access-control-allow-credentials':'true',
-    'x-content-type-options':'nosniff',
-    'referrer-policy':'no-referrer',
+    'access-control-allow-credentials': 'true',
+    'x-content-type-options': 'nosniff',
+    'referrer-policy': 'no-referrer',
     ...headers
   });
-  response.end(JSON.stringify(body));
+  response.end(body !== null && body !== undefined ? JSON.stringify(body) : undefined);
 };
 
 const readJson = async (request: IncomingMessage) => {
+  if ((request as any).body) {
+    if (typeof (request as any).body === 'object') return (request as any).body as Record<string, unknown>;
+    try { return JSON.parse(String((request as any).body)) as Record<string, unknown>; } catch { return {}; }
+  }
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of request) {
