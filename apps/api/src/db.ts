@@ -2,13 +2,26 @@ import pkg from 'pg';
 import type { PoolClient } from 'pg';
 const { Pool } = pkg;
 
-const connectionString = process.env.DATABASE_URL ?? 'postgresql://central_runtime:central_runtime_local_2026@localhost:5432/central_comunicacao';
+let _pool: InstanceType<typeof Pool> | null = null;
 
-const isLocalhost = connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
+export const getPool = (): InstanceType<typeof Pool> => {
+  if (!_pool) {
+    const connectionString = process.env.DATABASE_URL ?? 'postgresql://central_runtime:central_runtime_local_2026@localhost:5432/central_comunicacao';
+    const isLocalhost = connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
+    _pool = new Pool({
+      connectionString,
+      ssl: isLocalhost ? false : { rejectUnauthorized: false }
+    });
+  }
+  return _pool;
+};
 
-export const pool = new Pool({
-  connectionString,
-  ssl: isLocalhost ? false : { rejectUnauthorized: false }
+export const pool = new Proxy({} as InstanceType<typeof Pool>, {
+  get(_target, prop) {
+    const p = getPool();
+    const val = (p as any)[prop];
+    return typeof val === 'function' ? val.bind(p) : val;
+  }
 });
 
 export const withTenantTransaction = async <T>(companyId: string, operation: (client: PoolClient) => Promise<T>): Promise<T> => {

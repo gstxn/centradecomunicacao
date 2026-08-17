@@ -7,11 +7,24 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 // apps/api/src/db.ts
 import pkg from "pg";
 var { Pool } = pkg;
-var connectionString = process.env.DATABASE_URL ?? "postgresql://central_runtime:central_runtime_local_2026@localhost:5432/central_comunicacao";
-var isLocalhost = connectionString.includes("localhost") || connectionString.includes("127.0.0.1");
-var pool = new Pool({
-  connectionString,
-  ssl: isLocalhost ? false : { rejectUnauthorized: false }
+var _pool = null;
+var getPool = () => {
+  if (!_pool) {
+    const connectionString = process.env.DATABASE_URL ?? "postgresql://central_runtime:central_runtime_local_2026@localhost:5432/central_comunicacao";
+    const isLocalhost = connectionString.includes("localhost") || connectionString.includes("127.0.0.1");
+    _pool = new Pool({
+      connectionString,
+      ssl: isLocalhost ? false : { rejectUnauthorized: false }
+    });
+  }
+  return _pool;
+};
+var pool = new Proxy({}, {
+  get(_target, prop) {
+    const p = getPool();
+    const val = p[prop];
+    return typeof val === "function" ? val.bind(p) : val;
+  }
 });
 var withTenantTransaction = async (companyId, operation) => {
   const client = await pool.connect();
