@@ -1,14 +1,15 @@
-import pkg from 'pg';
+import pg from 'pg';
 import type { PoolClient } from 'pg';
-const { Pool } = pkg;
 
-let _pool: InstanceType<typeof Pool> | null = null;
+const PoolClass: any = (pg as any).Pool || (pg as any).default?.Pool || (pg as any).default || pg;
 
-export const getPool = (): InstanceType<typeof Pool> => {
+let _pool: any = null;
+
+export const getPool = (): any => {
   if (!_pool) {
     const connectionString = process.env.DATABASE_URL ?? 'postgresql://central_runtime:central_runtime_local_2026@localhost:5432/central_comunicacao';
     const isLocalhost = connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
-    _pool = new Pool({
+    _pool = new PoolClass({
       connectionString,
       connectionTimeoutMillis: 4000,
       idleTimeoutMillis: 10000,

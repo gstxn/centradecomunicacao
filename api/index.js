@@ -5,14 +5,14 @@ import { createServer } from "node:http";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 
 // apps/api/src/db.ts
-import pkg from "pg";
-var { Pool } = pkg;
+import pg from "pg";
+var PoolClass = pg.Pool || pg.default?.Pool || pg.default || pg;
 var _pool = null;
 var getPool = () => {
   if (!_pool) {
     const connectionString = process.env.DATABASE_URL ?? "postgresql://central_runtime:central_runtime_local_2026@localhost:5432/central_comunicacao";
     const isLocalhost = connectionString.includes("localhost") || connectionString.includes("127.0.0.1");
-    _pool = new Pool({
+    _pool = new PoolClass({
       connectionString,
       connectionTimeoutMillis: 4e3,
       idleTimeoutMillis: 1e4,
@@ -703,12 +703,13 @@ var markNoticeRead = async (tenant, noticeId) => {
 
 // apps/api/src/sanitize.ts
 import sanitizeHtml from "sanitize-html";
-var sanitizeNoticeHtml = (html) => sanitizeHtml(html, {
+var sanitize = typeof sanitizeHtml === "function" ? sanitizeHtml : sanitizeHtml.default;
+var sanitizeNoticeHtml = (html) => sanitize(html, {
   allowedTags: ["p", "br", "strong", "b", "em", "i", "u", "s", "ul", "ol", "li", "h1", "h2", "h3", "blockquote", "a"],
   allowedAttributes: { a: ["href"] },
   allowedSchemes: ["http", "https", "mailto"],
   allowProtocolRelative: false,
-  transformTags: { a: sanitizeHtml.simpleTransform("a", { rel: "noopener noreferrer", target: "_blank" }) }
+  transformTags: { a: (sanitize.simpleTransform || sanitizeHtml.simpleTransform)("a", { rel: "noopener noreferrer", target: "_blank" }) }
 });
 
 // apps/api/src/server.ts
