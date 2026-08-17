@@ -277,7 +277,8 @@ export const handleRequest = async (request: IncomingMessage, response: ServerRe
     }
 
     console.error(error);
-    return sendJson(response, 500, { error: 'INTERNAL_ERROR', message: 'Erro interno da API.', statusCode: 500 });
+    const detail = error instanceof Error ? error.message : 'Erro interno da API.';
+    return sendJson(response, 500, { error: 'INTERNAL_ERROR', message: detail, statusCode: 500 });
   }
 };
 
