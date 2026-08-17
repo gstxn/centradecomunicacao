@@ -10,6 +10,9 @@ export const getPool = (): InstanceType<typeof Pool> => {
     const isLocalhost = connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
     _pool = new Pool({
       connectionString,
+      connectionTimeoutMillis: 4000,
+      idleTimeoutMillis: 10000,
+      max: 5,
       ssl: isLocalhost ? false : { rejectUnauthorized: false }
     });
   }

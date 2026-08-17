@@ -14,6 +14,9 @@ var getPool = () => {
     const isLocalhost = connectionString.includes("localhost") || connectionString.includes("127.0.0.1");
     _pool = new Pool({
       connectionString,
+      connectionTimeoutMillis: 4e3,
+      idleTimeoutMillis: 1e4,
+      max: 5,
       ssl: isLocalhost ? false : { rejectUnauthorized: false }
     });
   }
@@ -54,7 +57,7 @@ var DatabaseUnavailableError = class extends Error {
     this.cause = cause;
   }
 };
-var isDemoMode = () => (process.env.DEMO_MODE === "true" || process.env.DEMO_MODE !== "false") && process.env.NODE_ENV !== "production" && process.env.REQUIRE_DATABASE !== "true";
+var isDemoMode = () => process.env.REQUIRE_DATABASE !== "true" || process.env.DEMO_MODE === "true";
 var markDatabaseUnavailable = (error) => {
   isDbAvailable = false;
   if (!isDemoMode()) throw new DatabaseUnavailableError(error);

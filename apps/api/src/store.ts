@@ -48,7 +48,7 @@ export class DatabaseUnavailableError extends Error {
   }
 }
 
-const isDemoMode = () => (process.env.DEMO_MODE === 'true' || process.env.DEMO_MODE !== 'false') && process.env.NODE_ENV !== 'production' && process.env.REQUIRE_DATABASE !== 'true';
+const isDemoMode = () => process.env.REQUIRE_DATABASE !== 'true' || process.env.DEMO_MODE === 'true';
 
 const markDatabaseUnavailable = (error?: unknown) => {
   isDbAvailable = false;
