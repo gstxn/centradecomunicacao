@@ -5,8 +5,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   try {
     await handleRequest(req, res);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown Serverless Error';
+    const message = error instanceof Error ? error.message : 'Internal Serverless Error';
     res.writeHead(500, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ error: 'SERVERLESS_CRASH', message, stack: error instanceof Error ? error.stack : undefined }));
+    res.end(JSON.stringify({ error: 'SERVERLESS_CRASH', message }));
   }
 }
