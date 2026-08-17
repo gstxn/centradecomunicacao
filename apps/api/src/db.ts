@@ -20,7 +20,7 @@ export const getPool = (): any => {
   return _pool;
 };
 
-export const pool = new Proxy({} as InstanceType<typeof Pool>, {
+export const pool: any = new Proxy({}, {
   get(_target, prop) {
     const p = getPool();
     const val = (p as any)[prop];

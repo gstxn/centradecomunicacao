@@ -179,7 +179,7 @@ export const authenticate = async (email: string, password: string) => {
         name: user.name,
         email: user.email,
         isSaaSAdmin: user.isSaaSAdmin === true,
-        companies: companiesQuery.rows.map((row) => ({
+        companies: companiesQuery.rows.map((row: any) => ({
           id: row.id,
           name: row.name,
           slug: row.slug,

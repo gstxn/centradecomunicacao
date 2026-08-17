@@ -18,7 +18,7 @@ import {
 } from './store.js';
 import { sanitizeNoticeHtml } from './sanitize.js';
 
-const PORT = Number(process.env.API_PORT ?? 3333);
+const PORT = Number(process.env.PORT ?? process.env.API_PORT ?? 3333);
 const WEB_ORIGIN = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
 const MAX_BODY_BYTES = 64 * 1024;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
@@ -54,12 +54,12 @@ class HttpError extends Error {
 
 const sendJson = (response: ServerResponse, statusCode: number, body: unknown, headers: Record<string, string> = {}) => {
   if (response.headersSent) return;
-  const origin = typeof response.getHeader === 'function' ? (response.getHeader('origin') || WEB_ORIGIN) : WEB_ORIGIN;
+  const origin = (response as any).__origin || WEB_ORIGIN;
   response.writeHead(statusCode, {
     'content-type': 'application/json; charset=utf-8',
-    'access-control-allow-origin': Array.isArray(origin) ? origin[0] : (origin || '*'),
+    'access-control-allow-origin': origin,
     'access-control-allow-headers': 'authorization, content-type, x-company-id',
-    'access-control-allow-methods': 'GET, POST, OPTIONS',
+    'access-control-allow-methods': 'GET, POST, OPTIONS, PUT, DELETE',
     'access-control-allow-credentials': 'true',
     'x-content-type-options': 'nosniff',
     'referrer-policy': 'no-referrer',
@@ -106,8 +106,6 @@ const requireSession = async (request: IncomingMessage, response: ServerResponse
 };
 
 const requireTenant = async (request: IncomingMessage, response: ServerResponse) => {
-
-
   const auth = await requireSession(request, response);
   if (!auth) return null;
   const companyIdHeader = request.headers['x-company-id'];
@@ -125,8 +123,17 @@ const requireTenant = async (request: IncomingMessage, response: ServerResponse)
 };
 
 export const handleRequest = async (request: IncomingMessage, response: ServerResponse) => {
+  const origin = request.headers.origin || WEB_ORIGIN;
+  (response as any).__origin = origin;
   try {
-    if (request.method === 'OPTIONS') return sendJson(response, 204, null);
+    if (request.method === 'OPTIONS') {
+      return sendJson(response, 204, null, {
+        'access-control-allow-origin': origin,
+        'access-control-allow-headers': 'authorization, content-type, x-company-id',
+        'access-control-allow-methods': 'GET, POST, OPTIONS, PUT, DELETE',
+        'access-control-allow-credentials': 'true'
+      });
+    }
     const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
     let pathname = url.pathname;
     if (pathname.startsWith('/api')) {
@@ -157,7 +164,7 @@ export const handleRequest = async (request: IncomingMessage, response: ServerRe
       }
 
       loginAttempts.delete(key);
-      return sendJson(response, 200, { user:result.user, activeCompanyId:result.activeCompanyId }, { 'set-cookie':`session=${result.accessToken}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800${process.env.NODE_ENV==='production'?'; Secure':''}` });
+      return sendJson(response, 200, { user:result.user, activeCompanyId:result.activeCompanyId }, { 'set-cookie':`session=${result.accessToken}; HttpOnly; SameSite=None; Path=/; Max-Age=28800; Secure` });
     }
 
     if (request.method === 'GET' && pathname === '/companies') {
@@ -250,7 +257,7 @@ export const handleRequest = async (request: IncomingMessage, response: ServerRe
 
     if (request.method === 'POST' && pathname === '/auth/logout') {
       const token=bearerToken(request); if(token) await revokeSession(token);
-      return sendJson(response,204,null,{'set-cookie':'session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0'});
+      return sendJson(response,204,null,{'set-cookie':'session=; HttpOnly; SameSite=None; Path=/; Max-Age=0; Secure'});
     }
 
     if (request.method === 'GET' && pathname === '/notices') {
@@ -290,13 +297,8 @@ export const handleRequest = async (request: IncomingMessage, response: ServerRe
 
 export const app = createServer(handleRequest);
 
-const isMain = Boolean(process.argv[1] && (
-  process.argv[1].endsWith('server.js') || 
-  process.argv[1].endsWith('server.ts')
-) && !process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME && process.env.NODE_ENV !== 'test');
-
-if (isMain) {
-  app.listen(PORT, '127.0.0.1', () => {
-    console.log(`API multiempresa disponível em http://127.0.0.1:${PORT}`);
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`API multiempresa disponível em http://0.0.0.0:${PORT}`);
   });
 }
