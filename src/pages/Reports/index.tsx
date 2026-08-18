@@ -3,10 +3,11 @@ import { FileBarChart, Download, FileSpreadsheet, FileText, Users, EyeOff, Check
 import styles from './Reports.module.css';
 import { useComunicados } from '../../context/ComunicadosContext';
 import { useAuth } from '../../context/AuthContext';
+import { getFaqs } from '../../services/api';
 
 export const Reports: React.FC = () => {
   const { comunicados } = useComunicados();
-  const { activeCompany } = useAuth();
+  const { activeCompany, session } = useAuth();
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const showFeedback = (msg: string) => {
@@ -57,12 +58,32 @@ export const Reports: React.FC = () => {
     downloadCsv(`historico_publicacoes_${activeCompany?.slug ?? 'empresa'}.csv`, csv);
   };
 
-  const handleExportFaq = () => {
-    const csv = `ID;Pergunta;Departamento;Data Atualizacao
-1;"Qual o tempo maximo para transporte de amostras de gasometria?";"Qualidade";"05/05/2025"
-2;"Como proceder quando o sistema SHIFT estiver fora do ar?";"Tecnologia da Informacao";"10/05/2025"
-3;"Quais os documentos necessarios para admissao de novos colaboradores?";"Recursos Humanos";"15/04/2025"
-`;
+  const handleExportFaq = async () => {
+    let faqsList: Array<{ id: string; question: string; department: string; category: string; updatedAt?: string; createdAt?: string }> = [];
+    if (session) {
+      try {
+        const res = await getFaqs(session);
+        if (res.data && res.data.length > 0) {
+          faqsList = res.data;
+        }
+      } catch {}
+    }
+
+    if (faqsList.length === 0) {
+      faqsList = [
+        { id: '1', question: 'Qual o tempo máximo para transporte de amostras de gasometria?', department: 'Qualidade', category: 'Coleta e Preparo', updatedAt: '05/08/2026' },
+        { id: '2', question: 'Como proceder quando o sistema SHIFT estiver fora do ar?', department: 'Tecnologia da Informação', category: 'Sistemas (SHIFT)', updatedAt: '10/08/2026' },
+        { id: '3', question: 'Quais os documentos necessários para admissão de novos colaboradores?', department: 'Recursos Humanos', category: 'Recursos Humanos', updatedAt: '15/07/2026' },
+        { id: '4', question: 'Como solicitar acesso a novos módulos ou resetar senha de usuário?', department: 'Tecnologia da Informação', category: 'Sistemas (SHIFT)', updatedAt: '12/08/2026' }
+      ];
+    }
+
+    let csv = 'ID;Pergunta;Categoria;Departamento;Ultima Atualizacao\n';
+    faqsList.forEach((f) => {
+      const dateStr = f.updatedAt || f.createdAt || new Intl.DateTimeFormat('pt-BR').format(new Date());
+      csv += `"${f.id}";"${f.question.replace(/"/g, '""')}";"${f.category}";"${f.department}";"${dateStr}"\n`;
+    });
+
     downloadCsv(`consultas_portal_conhecimento_${activeCompany?.slug ?? 'empresa'}.csv`, csv);
   };
 

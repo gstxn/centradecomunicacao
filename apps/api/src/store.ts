@@ -1,5 +1,4 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { pool, withTenantTransaction } from './db.js';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';import { pool, withTenantTransaction } from './db.js';
 import type {
   AuthenticatedUser,
   CompanySummary,
@@ -56,18 +55,27 @@ const markDatabaseUnavailable = (error?: unknown) => {
   console.warn('[API Store] PostgreSQL indisponível. Usando armazenamento em memória demonstrativo.');
 };
 
+let dbCheckPromise: Promise<boolean> | null = null;
+
 const checkDbConnection = async (): Promise<boolean> => {
   if (isDbAvailable === false && !isDemoMode()) throw new DatabaseUnavailableError();
   if (isDbAvailable !== null) return isDbAvailable;
-  try {
-    const client = await pool.connect();
-    client.release();
-    isDbAvailable = true;
-    return true;
-  } catch (error) {
-    markDatabaseUnavailable(error);
-    return false;
+  if (!dbCheckPromise) {
+    dbCheckPromise = (async () => {
+      try {
+        const client = await pool.connect();
+        client.release();
+        isDbAvailable = true;
+        return true;
+      } catch (error) {
+        markDatabaseUnavailable(error);
+        return false;
+      } finally {
+        dbCheckPromise = null;
+      }
+    })();
   }
+  return dbCheckPromise;
 };
 
 const ALL_PERMISSIONS: PermissionKey[] = [
@@ -113,7 +121,7 @@ const getRolePermissions = (role: SystemRole): PermissionKey[] => {
   return [];
 };
 
-interface MockNotice {
+export interface MockNotice {
   id: string;
   companyId: string;
   title: string;
@@ -124,6 +132,10 @@ interface MockNotice {
   authorName: string;
   departmentName: string;
   createdAt: string;
+  validFrom?: string;
+  validUntil?: string;
+  targetAudience?: string;
+  attachmentIds?: string[];
 }
 
 const mockNotices: MockNotice[] = [
@@ -137,6 +149,8 @@ const mockNotices: MockNotice[] = [
     authorId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2',
     authorName: 'Admin Central',
     departmentName: 'Tecnologia da Informação',
+    targetAudience: 'Toda a empresa',
+    validFrom: new Date().toISOString().split('T')[0],
     createdAt: new Date().toISOString()
   },
   {
@@ -149,12 +163,15 @@ const mockNotices: MockNotice[] = [
     authorId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2',
     authorName: 'Admin Central',
     departmentName: 'Qualidade',
+    targetAudience: 'Qualidade',
+    validFrom: new Date(Date.now() - 86400000).toISOString().split('T')[0],
     createdAt: new Date(Date.now() - 86400000).toISOString()
   }
 ];
 
 const mockSessions = new Map<string, { userId: string; expiresAt: Date }>();
 const mockReads = new Map<string, string>(); // key: `${companyId}:${noticeId}:${userId}` -> readAt ISO
+const mockAttachments = new Map<string, { id: string; companyId: string; filename: string; mimeType: string; sizeBytes: number; dataBase64: string; createdAt: string }>();
 
 // ==========================================
 // Public Store API
@@ -693,7 +710,6 @@ export const createTenantUser = async (tenant: TenantContext, input: CreateTenan
     departments: deptNames
   };
 };
-
 export const hasPermission = async (tenant: TenantContext, permission: string): Promise<boolean> => {
   if (await checkDbConnection()) {
     try {
@@ -717,8 +733,16 @@ export const listNotices = async (tenant: TenantContext) => {
     try {
       return await withTenantTransaction(tenant.companyId, async (client) => (await client.query(`
         SELECT n.id, n.title, n.category, n.type, n.content, n.created_at AS "createdAt",
+          n.valid_from AS "validFrom", n.valid_until AS "validUntil",
+          COALESCE(n.target_audience, 'Toda a empresa') AS "targetAudience",
           u.name AS author, COALESCE(d.name, 'Toda a empresa') AS department,
-          (r.read_at IS NOT NULL) AS read, r.read_at AS "readAt"
+          (r.read_at IS NOT NULL) AS read, r.read_at AS "readAt",
+          COALESCE(
+            (SELECT json_agg(json_build_object('id', a.id, 'filename', a.filename, 'sizeBytes', a.size_bytes, 'mimeType', a.mime_type))
+             FROM notice_attachments na JOIN attachments a ON a.id = na.attachment_id
+             WHERE na.notice_id = n.id AND na.company_id = n.company_id),
+            '[]'::json
+          ) AS attachments
         FROM notices n JOIN users u ON u.id=n.author_id LEFT JOIN departments d ON d.id=n.department_id
         LEFT JOIN notice_reads r ON r.notice_id=n.id AND r.user_id=$2 AND r.notice_version=n.version
         WHERE n.company_id=$1 AND n.status='published' ORDER BY COALESCE(n.published_at,n.created_at) DESC
@@ -731,6 +755,11 @@ export const listNotices = async (tenant: TenantContext) => {
   const notices = mockNotices.filter((n) => n.companyId === tenant.companyId);
   return notices.map((n) => {
     const readAt = mockReads.get(`${tenant.companyId}:${n.id}:${tenant.userId}`) ?? null;
+    const attachments = (n.attachmentIds ?? []).map((id) => {
+      const att = mockAttachments.get(id);
+      return att ? { id: att.id, filename: att.filename, sizeBytes: att.sizeBytes, mimeType: att.mimeType } : null;
+    }).filter(Boolean);
+
     return {
       id: n.id,
       title: n.title,
@@ -738,21 +767,65 @@ export const listNotices = async (tenant: TenantContext) => {
       type: n.type,
       content: n.content,
       createdAt: n.createdAt,
+      validFrom: n.validFrom,
+      validUntil: n.validUntil,
+      targetAudience: n.targetAudience || 'Toda a empresa',
       author: n.authorName,
       department: n.departmentName,
       read: readAt !== null,
-      readAt
+      readAt,
+      attachmentIds: n.attachmentIds,
+      attachments
     };
   });
 };
 
-export const createNotice = async (tenant: TenantContext, input: { title: string; category: string; type: string; content: string }) => {
+export const createNotice = async (
+  tenant: TenantContext,
+  input: {
+    title: string;
+    category: string;
+    type: string;
+    content: string;
+    attachmentIds?: string[];
+    validFrom?: string;
+    validUntil?: string;
+    targetAudience?: string;
+  }
+) => {
   if (await checkDbConnection()) {
     try {
-      return await withTenantTransaction(tenant.companyId, async (client) => (await client.query(`
-        INSERT INTO notices(company_id,title,category,type,content,author_id,status,published_at)
-        VALUES($1,$2,$3,$4::notice_type,$5,$6,'published',now()) RETURNING id
-      `, [tenant.companyId, input.title, input.category, input.type, input.content, tenant.userId])).rows[0]);
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        const noticeResult = await client.query(`
+          INSERT INTO notices(company_id,title,category,type,content,author_id,status,published_at,valid_from,valid_until,target_audience)
+          VALUES($1,$2,$3,$4::notice_type,$5,$6,'published',now(),$7,$8,$9) RETURNING id
+        `, [
+          tenant.companyId,
+          input.title,
+          input.category,
+          input.type,
+          input.content,
+          tenant.userId,
+          input.validFrom ? new Date(input.validFrom) : new Date(),
+          input.validUntil ? new Date(input.validUntil) : null,
+          input.targetAudience || 'Toda a empresa'
+        ]);
+        const noticeId = noticeResult.rows[0].id;
+        if (input.attachmentIds && input.attachmentIds.length > 0) {
+          for (const attId of input.attachmentIds) {
+            await client.query(`
+              INSERT INTO notice_attachments (company_id, notice_id, attachment_id)
+              VALUES ($1, $2, $3)
+              ON CONFLICT DO NOTHING
+            `, [tenant.companyId, noticeId, attId]);
+          }
+        }
+        await client.query(`
+          INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id, metadata)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [tenant.companyId, tenant.userId, 'NOTICE_CREATED', 'notice', noticeId, JSON.stringify({ title: input.title, type: input.type, targetAudience: input.targetAudience })]);
+        return { id: noticeId };
+      });
     } catch (error) {
       markDatabaseUnavailable(error);
     }
@@ -769,7 +842,11 @@ export const createNotice = async (tenant: TenantContext, input: { title: string
     authorId: tenant.userId,
     authorName: user?.name ?? 'Administrador',
     departmentName: input.category || 'Geral',
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    validFrom: input.validFrom,
+    validUntil: input.validUntil,
+    targetAudience: input.targetAudience || 'Toda a empresa',
+    attachmentIds: input.attachmentIds
   };
   mockNotices.unshift(newNotice);
   return { id: newNotice.id };
@@ -778,11 +855,20 @@ export const createNotice = async (tenant: TenantContext, input: { title: string
 export const markNoticeRead = async (tenant: TenantContext, noticeId: string) => {
   if (await checkDbConnection()) {
     try {
-      return await withTenantTransaction(tenant.companyId, async (client) => (await client.query(`
-        INSERT INTO notice_reads(company_id,notice_id,user_id,notice_version)
-        SELECT $1,n.id,$2,n.version FROM notices n WHERE n.id=$3 AND n.company_id=$1
-        ON CONFLICT DO NOTHING RETURNING read_at AS "readAt"
-      `, [tenant.companyId, tenant.userId, noticeId])).rows[0] ?? null);
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        const result = (await client.query(`
+          INSERT INTO notice_reads(company_id,notice_id,user_id,notice_version)
+          SELECT $1,n.id,$2,n.version FROM notices n WHERE n.id=$3 AND n.company_id=$1
+          ON CONFLICT DO NOTHING RETURNING read_at AS "readAt"
+        `, [tenant.companyId, tenant.userId, noticeId])).rows[0] ?? null;
+        if (result) {
+          await client.query(`
+            INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `, [tenant.companyId, tenant.userId, 'NOTICE_READ', 'notice', noticeId, '{}']);
+        }
+        return result;
+      });
     } catch (error) {
       markDatabaseUnavailable(error);
     }
@@ -799,3 +885,1034 @@ export const markNoticeRead = async (tenant: TenantContext, noticeId: string) =>
   mockReads.set(key, readAt);
   return { readAt };
 };
+
+export interface SaveAttachmentInput {
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  dataBase64: string;
+}
+
+export const saveAttachment = async (tenant: TenantContext, input: SaveAttachmentInput) => {
+  const attachmentId = randomUUID();
+  if (await checkDbConnection()) {
+    try {
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        const result = await client.query(`
+          INSERT INTO attachments (id, company_id, uploaded_by, filename, mime_type, size_bytes, data_base64)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          RETURNING id, filename, mime_type AS "mimeType", size_bytes AS "sizeBytes", created_at AS "createdAt"
+        `, [attachmentId, tenant.companyId, tenant.userId, input.filename, input.mimeType, input.sizeBytes, input.dataBase64]);
+        await client.query(`
+          INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id, metadata)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [tenant.companyId, tenant.userId, 'ATTACHMENT_UPLOADED', 'attachment', attachmentId, JSON.stringify({ filename: input.filename })]);
+        return result.rows[0];
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+
+  const createdAtt = {
+    id: attachmentId,
+    companyId: tenant.companyId,
+    filename: input.filename,
+    mimeType: input.mimeType,
+    sizeBytes: input.sizeBytes,
+    dataBase64: input.dataBase64,
+    createdAt: new Date().toISOString()
+  };
+  mockAttachments.set(attachmentId, createdAtt);
+
+  return {
+    id: attachmentId,
+    filename: input.filename,
+    mimeType: input.mimeType,
+    sizeBytes: input.sizeBytes,
+    createdAt: createdAtt.createdAt
+  };
+};
+
+export const getAttachment = async (tenant: TenantContext, attachmentId: string) => {
+  if (await checkDbConnection()) {
+    try {
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        const result = await client.query(`
+          SELECT id, filename, mime_type AS "mimeType", size_bytes AS "sizeBytes", data_base64 AS "dataBase64", created_at AS "createdAt"
+          FROM attachments
+          WHERE id = $1 AND company_id = $2
+        `, [attachmentId, tenant.companyId]);
+        return result.rows[0] ?? null;
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+
+  const att = mockAttachments.get(attachmentId);
+  if (!att || att.companyId !== tenant.companyId) return null;
+  return {
+    id: att.id,
+    filename: att.filename,
+    mimeType: att.mimeType,
+    sizeBytes: att.sizeBytes,
+    dataBase64: att.dataBase64,
+    createdAt: att.createdAt
+  };
+};
+
+export const recordAuditLog = async (
+  tenant: TenantContext,
+  action: string,
+  entityType: string,
+  entityId: string,
+  metadata: Record<string, unknown> = {}
+) => {
+  if (await checkDbConnection()) {
+    try {
+      await withTenantTransaction(tenant.companyId, async (client) => {
+        await client.query(`
+          INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id, metadata)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [tenant.companyId, tenant.userId, action, entityType, entityId, JSON.stringify(metadata)]);
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+};
+
+export const listAuditLogs = async (tenant: TenantContext) => {
+  if (await checkDbConnection()) {
+    try {
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        const result = await client.query(`
+          SELECT a.id, a.action, a.entity_type AS "entityType", a.entity_id AS "entityId",
+                 a.metadata, a.created_at AS "createdAt", u.name AS "userName", u.email AS "userEmail"
+          FROM audit_logs a
+          JOIN users u ON u.id = a.user_id
+          WHERE a.company_id = $1
+          ORDER BY a.created_at DESC
+          LIMIT 100
+        `, [tenant.companyId]);
+        return result.rows;
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+  return [];
+};
+
+// ==========================================
+// Support Tickets Store
+// ==========================================
+export interface TicketItem {
+  id: string;
+  companyId: string;
+  userId: string;
+  ticketCode: string;
+  subject: string;
+  category: string;
+  priority: string;
+  status: string;
+  description: string;
+  authorName: string;
+  assigneeName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const mockTickets: TicketItem[] = [];
+
+export const listTickets = async (tenant: TenantContext): Promise<TicketItem[]> => {
+  if (await checkDbConnection()) {
+    try {
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        const result = await client.query(`
+          SELECT t.id, t.company_id AS "companyId", t.user_id AS "userId", t.ticket_code AS "ticketCode",
+                 t.subject, t.category, t.priority, t.status, t.description,
+                 u.name AS "authorName", COALESCE(t.assignee_name, 'Não atribuído') AS "assigneeName",
+                 t.created_at AS "createdAt", t.updated_at AS "updatedAt"
+          FROM support_tickets t
+          JOIN users u ON u.id = t.user_id
+          WHERE t.company_id = $1
+          ORDER BY t.created_at DESC
+        `, [tenant.companyId]);
+        return result.rows;
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+
+  return mockTickets.filter((t) => t.companyId === tenant.companyId);
+};
+
+export const createTicket = async (
+  tenant: TenantContext,
+  input: { subject: string; category?: string; priority?: string; description: string }
+): Promise<TicketItem> => {
+  const ticketId = randomUUID();
+  const ticketCode = `CH-${Date.now().toString().slice(-6)}`;
+  const user = MOCK_USERS.find((u) => u.id === tenant.userId);
+  const authorName = user?.name ?? 'Colaborador';
+  const category = input.category || 'Geral';
+  const priority = input.priority || 'Normal';
+
+  if (await checkDbConnection()) {
+    try {
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        const result = await client.query(`
+          INSERT INTO support_tickets (id, company_id, user_id, ticket_code, subject, category, priority, status, description, assignee_name)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, 'Aberto', $8, 'Não atribuído')
+          RETURNING id, company_id AS "companyId", user_id AS "userId", ticket_code AS "ticketCode",
+                    subject, category, priority, status, description, assignee_name AS "assigneeName",
+                    created_at AS "createdAt", updated_at AS "updatedAt"
+        `, [ticketId, tenant.companyId, tenant.userId, ticketCode, input.subject, category, priority, input.description]);
+
+        await client.query(`
+          INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id, metadata)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [tenant.companyId, tenant.userId, 'TICKET_CREATED', 'ticket', ticketId, JSON.stringify({ code: ticketCode, subject: input.subject })]);
+
+        return { ...result.rows[0], authorName };
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+
+  const newTicket: TicketItem = {
+    id: ticketId,
+    companyId: tenant.companyId,
+    userId: tenant.userId,
+    ticketCode,
+    subject: input.subject,
+    category,
+    priority,
+    status: 'Aberto',
+    description: input.description,
+    authorName,
+    assigneeName: 'Não atribuído',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  mockTickets.unshift(newTicket);
+  return newTicket;
+};
+
+export const updateTicket = async (
+  tenant: TenantContext,
+  ticketId: string,
+  input: { status?: string; assigneeName?: string }
+): Promise<TicketItem | null> => {
+  if (await checkDbConnection()) {
+    try {
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        const result = await client.query(`
+          UPDATE support_tickets
+          SET status = COALESCE($1, status),
+              assignee_name = COALESCE($2, assignee_name),
+              updated_at = now()
+          WHERE id = $3 AND company_id = $4
+          RETURNING id, company_id AS "companyId", user_id AS "userId", ticket_code AS "ticketCode",
+                    subject, category, priority, status, description, assignee_name AS "assigneeName",
+                    created_at AS "createdAt", updated_at AS "updatedAt"
+        `, [input.status ?? null, input.assigneeName ?? null, ticketId, tenant.companyId]);
+
+        if (result.rowCount === 0) return null;
+        await client.query(`
+          INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id, metadata)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [tenant.companyId, tenant.userId, 'TICKET_UPDATED', 'ticket', ticketId, JSON.stringify(input)]);
+
+        return result.rows[0];
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+
+  const index = mockTickets.findIndex((t) => t.id === ticketId && t.companyId === tenant.companyId);
+  if (index === -1) return null;
+
+  const current = mockTickets[index];
+  if (!current) return null;
+
+  const updated: TicketItem = {
+    id: current.id,
+    companyId: current.companyId,
+    userId: current.userId,
+    ticketCode: current.ticketCode,
+    subject: current.subject,
+    category: current.category,
+    priority: current.priority,
+    status: input.status ?? current.status,
+    description: current.description,
+    authorName: current.authorName,
+    assigneeName: input.assigneeName ?? current.assigneeName,
+    createdAt: current.createdAt,
+    updatedAt: new Date().toISOString()
+  };
+  mockTickets[index] = updated;
+  return updated;
+};
+
+// ==========================================
+// Corporate Documents Store
+// ==========================================
+export interface DocumentItem {
+  id: string;
+  companyId: string;
+  name: string;
+  code: string;
+  department: string;
+  version: string;
+  status: 'Vigente' | 'Em revisão' | 'Obsoleto';
+  validUntil?: string;
+  description: string;
+  fileUrl?: string;
+  attachmentId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const mockDocuments: DocumentItem[] = [
+  {
+    id: 'doc-1',
+    companyId: '11111111-1111-4111-8111-111111111111',
+    name: 'Manual de Boas Práticas Laboratoriais e Biossegurança',
+    code: 'POP-QUAL-001',
+    department: 'Qualidade',
+    version: 'v4.2',
+    status: 'Vigente',
+    validUntil: '2027-12-31',
+    description: 'Diretrizes oficiais para manipulação de amostras, EPIs e descarte de resíduos biológicos.',
+    createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 5).toISOString()
+  },
+  {
+    id: 'doc-2',
+    companyId: '11111111-1111-4111-8111-111111111111',
+    name: 'Procedimento Operacional Padrão: Triagem e Recepção de Pacientes',
+    code: 'POP-OPE-012',
+    department: 'Operações',
+    version: 'v2.8',
+    status: 'Vigente',
+    validUntil: '2027-06-30',
+    description: 'Fluxograma de acolhimento, conferência de guias de convênio e prioridades de atendimento.',
+    createdAt: new Date(Date.now() - 86400000 * 10).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 10).toISOString()
+  },
+  {
+    id: 'doc-3',
+    companyId: '11111111-1111-4111-8111-111111111111',
+    name: 'Política de Segurança da Informação e Gestão de Senhas',
+    code: 'POL-TI-005',
+    department: 'Tecnologia da Informação',
+    version: 'v3.0',
+    status: 'Vigente',
+    validUntil: '2026-12-31',
+    description: 'Regras de acesso a sistemas internos, 2FA, uso aceitável de dispositivos e LGPD.',
+    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000 * 2).toISOString()
+  }
+];
+
+export const listDocuments = async (tenant: TenantContext): Promise<DocumentItem[]> => {
+  if (await checkDbConnection()) {
+    try {
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        const result = await client.query(`
+          SELECT id, company_id AS "companyId", name, code, department, version, status,
+                 valid_until AS "validUntil", description, file_url AS "fileUrl", attachment_id AS "attachmentId",
+                 created_at AS "createdAt", updated_at AS "updatedAt"
+          FROM corporate_documents
+          WHERE company_id = $1
+          ORDER BY code ASC
+        `, [tenant.companyId]);
+        return result.rows;
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+
+  return mockDocuments.filter((d) => d.companyId === tenant.companyId);
+};
+
+export const createDocument = async (
+  tenant: TenantContext,
+  input: {
+    name: string;
+    code: string;
+    department: string;
+    version: string;
+    status?: 'Vigente' | 'Em revisão' | 'Obsoleto';
+    validUntil?: string;
+    description?: string;
+    attachmentId?: string;
+  }
+): Promise<DocumentItem> => {
+  const docId = randomUUID();
+  const status = input.status || 'Vigente';
+
+  if (await checkDbConnection()) {
+    try {
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        const result = await client.query(`
+          INSERT INTO corporate_documents (id, company_id, name, code, department, version, status, valid_until, description, attachment_id)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          RETURNING id, company_id AS "companyId", name, code, department, version, status,
+                    valid_until AS "validUntil", description, file_url AS "fileUrl", attachment_id AS "attachmentId",
+                    created_at AS "createdAt", updated_at AS "updatedAt"
+        `, [
+          docId,
+          tenant.companyId,
+          input.name,
+          input.code,
+          input.department,
+          input.version,
+          status,
+          input.validUntil ? new Date(input.validUntil) : null,
+          input.description ?? '',
+          input.attachmentId ?? null
+        ]);
+
+        await client.query(`
+          INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id, metadata)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [tenant.companyId, tenant.userId, 'DOCUMENT_CREATED', 'document', docId, JSON.stringify({ code: input.code, name: input.name })]);
+
+        return result.rows[0];
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+
+  const newDoc: DocumentItem = {
+    id: docId,
+    companyId: tenant.companyId,
+    name: input.name,
+    code: input.code,
+    department: input.department,
+    version: input.version,
+    status,
+    validUntil: input.validUntil,
+    description: input.description ?? '',
+    attachmentId: input.attachmentId,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  mockDocuments.unshift(newDoc);
+  return newDoc;
+};
+
+// ==========================================
+// Knowledge Portal FAQs Store
+// ==========================================
+export interface FaqItem {
+  id: string;
+  companyId: string;
+  question: string;
+  answer: string;
+  department: string;
+  category: string;
+  tags?: string;
+  relatedDocCode?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const mockFaqs: FaqItem[] = [
+  {
+    id: 'faq-1',
+    companyId: '11111111-1111-4111-8111-111111111111',
+    question: 'Qual o tempo máximo para transporte de amostras de gasometria?',
+    answer: 'A amostra de sangue total para gasometria deve ser mantida em temperatura ambiente e analisada em até 30 minutos. Se a análise for demorar mais, deve ser mantida em banho de gelo (0-4°C) e analisada em até 1 hora.',
+    department: 'Qualidade',
+    category: 'Coleta e Preparo',
+    tags: 'gasometria, amostra, tempo, temperatura, gelo',
+    relatedDocCode: 'POP-QUAL-001',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: 'faq-2',
+    companyId: '11111111-1111-4111-8111-111111111111',
+    question: 'Como proceder quando o sistema SHIFT estiver fora do ar?',
+    answer: 'Em caso de inoperância do sistema SHIFT, os atendimentos de urgência devem ser registrados no formulário físico PQ-014 (Plano de Contingência). Assim que o sistema retornar, os dados devem ser repassados para a plataforma em até 2 horas.',
+    department: 'Tecnologia da Informação',
+    category: 'Sistemas (SHIFT)',
+    tags: 'shift, contingencia, inoperancia, urgencia, queda',
+    relatedDocCode: 'POL-TI-005',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: 'faq-3',
+    companyId: '11111111-1111-4111-8111-111111111111',
+    question: 'Quais os documentos necessários para admissão de novos colaboradores?',
+    answer: 'O novo colaborador deve apresentar: RG, CPF, Comprovante de Residência, Carteira de Trabalho, Título de Eleitor, Cartão SUS e Atestado Médico Admissional. A documentação deve ser enviada ao RH via sistema.',
+    department: 'Recursos Humanos',
+    category: 'Recursos Humanos',
+    tags: 'admissao, rh, documentos, onboarding, contrato',
+    relatedDocCode: 'POP-OPE-012',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+];
+
+export const listFaqs = async (tenant: TenantContext): Promise<FaqItem[]> => {
+  if (await checkDbConnection()) {
+    try {
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        const result = await client.query(`
+          SELECT id, company_id AS "companyId", question, answer, department, category,
+                 tags, related_doc_code AS "relatedDocCode",
+                 created_at AS "createdAt", updated_at AS "updatedAt"
+          FROM knowledge_faqs
+          WHERE company_id = $1
+          ORDER BY category ASC, created_at DESC
+        `, [tenant.companyId]);
+        return result.rows;
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+
+  return mockFaqs.filter((f) => f.companyId === tenant.companyId);
+};
+
+export const createFaq = async (
+  tenant: TenantContext,
+  input: { question: string; answer: string; department: string; category: string; tags?: string; relatedDocCode?: string }
+): Promise<FaqItem> => {
+  const faqId = randomUUID();
+
+  if (await checkDbConnection()) {
+    try {
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        const result = await client.query(`
+          INSERT INTO knowledge_faqs (id, company_id, question, answer, department, category, tags, related_doc_code)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          RETURNING id, company_id AS "companyId", question, answer, department, category,
+                    tags, related_doc_code AS "relatedDocCode",
+                    created_at AS "createdAt", updated_at AS "updatedAt"
+        `, [faqId, tenant.companyId, input.question, input.answer, input.department, input.category, input.tags ?? '', input.relatedDocCode ?? null]);
+
+        await client.query(`
+          INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id, metadata)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [tenant.companyId, tenant.userId, 'FAQ_CREATED', 'faq', faqId, JSON.stringify({ question: input.question, category: input.category })]);
+
+        return result.rows[0];
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+
+  const newFaq: FaqItem = {
+    id: faqId,
+    companyId: tenant.companyId,
+    question: input.question,
+    answer: input.answer,
+    department: input.department,
+    category: input.category,
+    tags: input.tags ?? '',
+    relatedDocCode: input.relatedDocCode,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  mockFaqs.unshift(newFaq);
+  return newFaq;
+};
+
+// ==========================================
+// Search Queries Store & Analytics
+// ==========================================
+export interface SearchQueryItem {
+  id: string;
+  companyId: string;
+  queryText: string;
+  resultsCount: number;
+  createdAt: string;
+}
+
+const mockSearchQueries: SearchQueryItem[] = [
+  { id: 'sq-1', companyId: '11111111-1111-4111-8111-111111111111', queryText: 'gasometria arterial', resultsCount: 3, createdAt: new Date().toISOString() },
+  { id: 'sq-2', companyId: '11111111-1111-4111-8111-111111111111', queryText: 'acesso myPardini', resultsCount: 2, createdAt: new Date().toISOString() },
+  { id: 'sq-3', companyId: '11111111-1111-4111-8111-111111111111', queryText: 'exame de curva glicemica gestante', resultsCount: 0, createdAt: new Date().toISOString() }
+];
+
+export const recordSearchQuery = async (
+  tenant: TenantContext,
+  queryText: string,
+  resultsCount: number
+) => {
+  const queryId = randomUUID();
+  if (await checkDbConnection()) {
+    try {
+      await withTenantTransaction(tenant.companyId, async (client) => {
+        await client.query(`
+          INSERT INTO search_queries (id, company_id, user_id, query_text, results_count)
+          VALUES ($1, $2, $3, $4, $5)
+        `, [queryId, tenant.companyId, tenant.userId, queryText.slice(0, 255), resultsCount]);
+      });
+      return { id: queryId };
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+
+  mockSearchQueries.unshift({
+    id: queryId,
+    companyId: tenant.companyId,
+    queryText: queryText.slice(0, 255),
+    resultsCount,
+    createdAt: new Date().toISOString()
+  });
+  return { id: queryId };
+};
+
+export const listSearchAnalytics = async (tenant: TenantContext) => {
+  if (await checkDbConnection()) {
+    try {
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        const topSearches = (await client.query(`
+          SELECT query_text AS "queryText", count(*) AS "totalCount", avg(results_count) AS "avgResults"
+          FROM search_queries
+          WHERE company_id = $1
+          GROUP BY query_text
+          ORDER BY totalCount DESC
+          LIMIT 10
+        `, [tenant.companyId])).rows;
+
+        const zeroResultSearches = (await client.query(`
+          SELECT query_text AS "queryText", count(*) AS "missCount", max(created_at) AS "lastAttempt"
+          FROM search_queries
+          WHERE company_id = $1 AND results_count = 0
+          GROUP BY query_text
+          ORDER BY missCount DESC
+          LIMIT 10
+        `, [tenant.companyId])).rows;
+
+        return { topSearches, zeroResultSearches };
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+
+  const companySearches = mockSearchQueries.filter((s) => s.companyId === tenant.companyId);
+  const zeroResultSearches = companySearches
+    .filter((s) => s.resultsCount === 0)
+    .map((s) => ({ queryText: s.queryText, missCount: 1, lastAttempt: s.createdAt }));
+
+  return {
+    topSearches: companySearches.slice(0, 10).map((s) => ({ queryText: s.queryText, totalCount: 1, avgResults: s.resultsCount })),
+    zeroResultSearches
+  };
+};
+
+// ==========================================
+// Quick Links Store
+// ==========================================
+export interface QuickLinkItem {
+  id: string;
+  companyId: string;
+  title: string;
+  url: string;
+  icon: string;
+  category: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
+const mockQuickLinks: QuickLinkItem[] = [
+  {
+    id: 'link-1',
+    companyId: '11111111-1111-4111-8111-111111111111',
+    title: 'Sistema SHIFT (LIS)',
+    url: 'https://shift.exemplo.com.br',
+    icon: 'server',
+    category: 'Sistemas Clínicos',
+    sortOrder: 1,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'link-2',
+    companyId: '11111111-1111-4111-8111-111111111111',
+    title: 'Portal do Colaborador (Folha e Ponto)',
+    url: 'https://folha.exemplo.com.br',
+    icon: 'users',
+    category: 'Recursos Humanos',
+    sortOrder: 2,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'link-3',
+    companyId: '11111111-1111-4111-8111-111111111111',
+    title: 'Gestão da Qualidade & Não Conformidades',
+    url: 'https://qualidade.exemplo.com.br',
+    icon: 'shield',
+    category: 'Qualidade',
+    sortOrder: 3,
+    createdAt: new Date().toISOString()
+  }
+];
+
+export const listQuickLinks = async (tenant: TenantContext): Promise<QuickLinkItem[]> => {
+  if (await checkDbConnection()) {
+    try {
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        const result = await client.query(`
+          SELECT id, company_id AS "companyId", title, url, icon, category,
+                 sort_order AS "sortOrder", created_at AS "createdAt"
+          FROM quick_links
+          WHERE company_id = $1
+          ORDER BY sort_order ASC, title ASC
+        `, [tenant.companyId]);
+        return result.rows;
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+
+  return mockQuickLinks.filter((l) => l.companyId === tenant.companyId);
+};
+
+export const createQuickLink = async (
+  tenant: TenantContext,
+  input: { title: string; url: string; icon?: string; category?: string; sortOrder?: number }
+): Promise<QuickLinkItem> => {
+  const linkId = randomUUID();
+  const icon = input.icon || 'globe';
+  const category = input.category || 'Geral';
+  const sortOrder = input.sortOrder || 0;
+
+  if (await checkDbConnection()) {
+    try {
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        const result = await client.query(`
+          INSERT INTO quick_links (id, company_id, title, url, icon, category, sort_order)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          RETURNING id, company_id AS "companyId", title, url, icon, category,
+                    sort_order AS "sortOrder", created_at AS "createdAt"
+        `, [linkId, tenant.companyId, input.title, input.url, icon, category, sortOrder]);
+
+        return result.rows[0];
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+
+  const newLink: QuickLinkItem = {
+    id: linkId,
+    companyId: tenant.companyId,
+    title: input.title,
+    url: input.url,
+    icon,
+    category,
+    sortOrder,
+    createdAt: new Date().toISOString()
+  };
+  mockQuickLinks.push(newLink);
+  return newLink;
+};
+
+// ==========================================
+// Calendar Events Store
+// ==========================================
+export interface CalendarEventItem {
+  id: string;
+  companyId: string;
+  title: string;
+  eventDate: string;
+  location: string;
+  color: string;
+  status: 'active' | 'cancelled';
+  createdAt: string;
+}
+
+const mockCalendarEvents: CalendarEventItem[] = [
+  {
+    id: 'cal-1',
+    companyId: '11111111-1111-4111-8111-111111111111',
+    title: 'Auditoria Externa de Acreditação PALC/ONA',
+    eventDate: new Date(Date.now() + 86400000 * 3).toISOString(),
+    location: 'Unidade Central - Laboratório',
+    color: '#8b5cf6',
+    status: 'active',
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'cal-2',
+    companyId: '11111111-1111-4111-8111-111111111111',
+    title: 'Treinamento: Atualização de Biossegurança e PGRSS',
+    eventDate: new Date(Date.now() + 86400000 * 7).toISOString(),
+    location: 'Auditório Principal & Online',
+    color: '#3b82f6',
+    status: 'active',
+    createdAt: new Date().toISOString()
+  }
+];
+
+export const listCalendarEvents = async (tenant: TenantContext): Promise<CalendarEventItem[]> => {
+  if (await checkDbConnection()) {
+    try {
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        const result = await client.query(`
+          SELECT id, company_id AS "companyId", title, event_date AS "eventDate",
+                 location, color, status, created_at AS "createdAt"
+          FROM calendar_events
+          WHERE company_id = $1 AND status = 'active'
+          ORDER BY event_date ASC
+        `, [tenant.companyId]);
+        return result.rows;
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+
+  return mockCalendarEvents.filter((c) => c.companyId === tenant.companyId && c.status === 'active');
+};
+
+export const createCalendarEvent = async (
+  tenant: TenantContext,
+  input: { title: string; eventDate: string; location?: string; color?: string }
+): Promise<CalendarEventItem> => {
+  const eventId = randomUUID();
+  const location = input.location || 'Local a definir';
+  const color = input.color || '#3b82f6';
+
+  if (await checkDbConnection()) {
+    try {
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        const result = await client.query(`
+          INSERT INTO calendar_events (id, company_id, title, event_date, location, color, status)
+          VALUES ($1, $2, $3, $4, $5, $6, 'active')
+          RETURNING id, company_id AS "companyId", title, event_date AS "eventDate",
+                    location, color, status, created_at AS "createdAt"
+        `, [eventId, tenant.companyId, input.title, input.eventDate, location, color]);
+
+        await client.query(`
+          INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id, metadata)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [tenant.companyId, tenant.userId, 'CALENDAR_EVENT_CREATED', 'calendar_event', eventId, JSON.stringify({ title: input.title })]);
+
+        return result.rows[0];
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+
+  const newEvent: CalendarEventItem = {
+    id: eventId,
+    companyId: tenant.companyId,
+    title: input.title,
+    eventDate: input.eventDate,
+    location,
+    color,
+    status: 'active',
+    createdAt: new Date().toISOString()
+  };
+  mockCalendarEvents.push(newEvent);
+  return newEvent;
+};
+
+// ==========================================
+// Notice Edit & Archive Store
+// ==========================================
+export const updateNotice = async (
+  tenant: TenantContext,
+  noticeId: string,
+  input: { title?: string; content?: string; category?: string; type?: string }
+) => {
+  if (await checkDbConnection()) {
+    try {
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        const result = await client.query(`
+          UPDATE notices
+          SET title = COALESCE($1, title),
+              content = COALESCE($2, content),
+              category = COALESCE($3, category),
+              type = COALESCE($4::notice_type, type),
+              updated_at = now()
+          WHERE id = $5 AND company_id = $6
+          RETURNING id, title, category, type, content
+        `, [input.title ?? null, input.content ?? null, input.category ?? null, input.type ?? null, noticeId, tenant.companyId]);
+
+        if (result.rowCount === 0) return null;
+
+        await client.query(`
+          INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id, metadata)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [tenant.companyId, tenant.userId, 'NOTICE_UPDATED', 'notice', noticeId, JSON.stringify(input)]);
+
+        return result.rows[0];
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+
+  const notice = mockNotices.find((n) => n.id === noticeId && n.companyId === tenant.companyId);
+  if (!notice) return null;
+
+  if (input.title) notice.title = input.title;
+  if (input.content) notice.content = input.content;
+  if (input.category) notice.category = input.category;
+  if (input.type) notice.type = input.type as 'urgent' | 'informative' | 'update';
+
+  return notice;
+};
+
+export const archiveNotice = async (tenant: TenantContext, noticeId: string) => {
+  if (await checkDbConnection()) {
+    try {
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        const result = await client.query(`
+          UPDATE notices
+          SET status = 'archived', updated_at = now()
+          WHERE id = $1 AND company_id = $2
+          RETURNING id
+        `, [noticeId, tenant.companyId]);
+
+        if (result.rowCount === 0) return null;
+
+        await client.query(`
+          INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id, metadata)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [tenant.companyId, tenant.userId, 'NOTICE_ARCHIVED', 'notice', noticeId, '{}']);
+
+        return result.rows[0];
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+
+  const idx = mockNotices.findIndex((n) => n.id === noticeId && n.companyId === tenant.companyId);
+  if (idx === -1) return null;
+
+  mockNotices.splice(idx, 1);
+  return { id: noticeId };
+};
+
+// ==========================================
+// User Role, Status & Password Management
+// ==========================================
+export const updateTenantUser = async (
+  tenant: TenantContext,
+  targetUserId: string,
+  input: { role?: SystemRole; departmentIds?: string[] }
+) => {
+  if (await checkDbConnection()) {
+    try {
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        if (input.role) {
+          await client.query(`
+            UPDATE memberships
+            SET role = $1
+            WHERE user_id = $2 AND company_id = $3
+          `, [input.role, targetUserId, tenant.companyId]);
+        }
+
+        if (input.departmentIds) {
+          const membershipRes = await client.query('SELECT id FROM memberships WHERE user_id = $1 AND company_id = $2', [targetUserId, tenant.companyId]);
+          const membershipId = membershipRes.rows[0]?.id;
+          if (membershipId) {
+            await client.query('DELETE FROM membership_departments WHERE company_id = $1 AND membership_id = $2', [tenant.companyId, membershipId]);
+            for (const deptId of input.departmentIds) {
+              await client.query('INSERT INTO membership_departments (company_id, membership_id, department_id) VALUES ($1, $2, $3)', [tenant.companyId, membershipId, deptId]);
+            }
+          }
+        }
+
+        await client.query(`
+          INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id, metadata)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [tenant.companyId, tenant.userId, 'USER_UPDATED', 'user', targetUserId, JSON.stringify(input)]);
+
+        return { id: targetUserId, ...input };
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+
+  const m = MOCK_MEMBERSHIPS.find((mb) => mb.userId === targetUserId && mb.companyId === tenant.companyId);
+  if (m && input.role) {
+    m.role = input.role;
+  }
+  return { id: targetUserId, ...input };
+};
+
+export const toggleTenantUserStatus = async (tenant: TenantContext, targetUserId: string) => {
+  if (await checkDbConnection()) {
+    try {
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        const current = await client.query('SELECT status FROM memberships WHERE user_id = $1 AND company_id = $2', [targetUserId, tenant.companyId]);
+        if (current.rowCount === 0) return null;
+
+        const nextStatus = current.rows[0].status === 'active' ? 'suspended' : 'active';
+        await client.query('UPDATE memberships SET status = $1 WHERE user_id = $2 AND company_id = $3', [nextStatus, targetUserId, tenant.companyId]);
+
+        await client.query(`
+          INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id, metadata)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [tenant.companyId, tenant.userId, 'USER_STATUS_TOGGLED', 'user', targetUserId, JSON.stringify({ status: nextStatus })]);
+
+        return { userId: targetUserId, status: nextStatus };
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+
+  const m = MOCK_MEMBERSHIPS.find((mb) => mb.userId === targetUserId && mb.companyId === tenant.companyId);
+  if (!m) return null;
+  m.status = m.status === 'active' ? 'suspended' : 'active';
+  return { userId: targetUserId, status: m.status };
+};
+
+export const resetTenantUserPassword = async (tenant: TenantContext, targetUserId: string, newPassword: string) => {
+  if (await checkDbConnection()) {
+    try {
+      return await withTenantTransaction(tenant.companyId, async (client) => {
+        await client.query(`
+          UPDATE users
+          SET password_hash = crypt($1, gen_salt('bf')), updated_at = now()
+          WHERE id = $2
+        `, [newPassword, targetUserId]);
+
+        await client.query(`
+          INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id, metadata)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [tenant.companyId, tenant.userId, 'USER_PASSWORD_RESET', 'user', targetUserId, '{}']);
+
+        return { success: true };
+      });
+    } catch (error) {
+      markDatabaseUnavailable(error);
+    }
+  }
+
+  const user = MOCK_USERS.find((u) => u.id === targetUserId);
+  if (user) {
+    user.password = newPassword;
+    return { success: true };
+  }
+  return { success: false };
+};
+

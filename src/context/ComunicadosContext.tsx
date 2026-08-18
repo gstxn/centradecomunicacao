@@ -9,12 +9,16 @@ export interface Comunicado {
   category: string;
   type: 'Urgente' | 'Atualização' | 'Informativo';
   date: string;
+  validFrom?: string;
+  validUntil?: string;
+  targetAudience?: string;
   author: string;
   department: string;
   read: boolean;
   readAt?: string;
   content?: string;
-  attachments?: { name: string; size: string; type: string }[];
+  attachments?: { id?: string; name: string; size: string; type: string }[];
+  attachmentIds?: string[];
 }
 
 type NewNotice = Omit<Comunicado, 'id' | 'read' | 'date' | 'author' | 'department'>;
@@ -37,7 +41,14 @@ const mapNotice = (n: ApiNotice): Comunicado => ({
   ...n,
   type: n.type === 'urgent' ? 'Urgente' : n.type === 'update' ? 'Atualização' : 'Informativo',
   date: new Intl.DateTimeFormat('pt-BR').format(new Date(n.createdAt)),
-  readAt: n.readAt ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(n.readAt)) : undefined
+  readAt: n.readAt ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(n.readAt)) : undefined,
+  targetAudience: n.targetAudience || 'Toda a empresa',
+  attachments: n.attachments?.map((a) => ({
+    id: a.id,
+    name: a.filename,
+    size: (a.sizeBytes / 1024 / 1024).toFixed(2) + ' MB',
+    type: a.filename.split('.').pop()?.toUpperCase() || 'ARQUIVO'
+  }))
 });
 
 export const ComunicadosProvider = ({ children }: { children: ReactNode }) => {
@@ -93,7 +104,11 @@ export const ComunicadosProvider = ({ children }: { children: ReactNode }) => {
         title: n.title,
         category: n.category,
         type: n.type === 'Urgente' ? 'urgent' : n.type === 'Atualização' ? 'update' : 'informative',
-        content: n.content ?? ''
+        content: n.content ?? '',
+        attachmentIds: n.attachmentIds,
+        validFrom: n.validFrom,
+        validUntil: n.validUntil,
+        targetAudience: n.targetAudience
       });
       await refresh();
     },

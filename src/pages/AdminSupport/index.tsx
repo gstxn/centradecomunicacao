@@ -2,32 +2,73 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Headphones, Search, Filter, AlertTriangle, Clock, CheckCircle2, MoreVertical, TicketCheck, Users } from 'lucide-react';
 import styles from './AdminSupport.module.css';
 import type { Ticket, TicketStatus } from '../Support';
+import { useAuth } from '../../context/AuthContext';
+import { getTickets, updateTicketRequest } from '../../services/api';
 
 const STORAGE_KEY = 'central-comunicacao:tickets:v2';
 
 export const AdminSupport: React.FC = () => {
+  const { session } = useAuth();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [categoryFilter, setCategoryFilter] = useState('Todas');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'ativos' | 'arquivados'>('ativos');
-  
+
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setTickets(JSON.parse(raw));
-    } catch {}
-  }, []);
+    if (!session) {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) setTickets(JSON.parse(raw));
+      } catch {}
+      return;
+    }
+
+    let cancelled = false;
+    getTickets(session)
+      .then((res) => {
+        if (cancelled) return;
+        const apiMapped: Ticket[] = res.data.map((t) => ({
+          id: t.id,
+          subject: t.subject,
+          category: t.category,
+          priority: t.priority,
+          status: t.status as TicketStatus,
+          createdAt: new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(t.createdAt)),
+          author: t.authorName,
+          assignee: t.assigneeName,
+          description: t.description
+        }));
+        setTickets(apiMapped);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(apiMapped));
+      })
+      .catch(() => {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (raw) setTickets(JSON.parse(raw));
+        } catch {}
+      });
+
+    return () => { cancelled = true; };
+  }, [session]);
 
   const saveTickets = (updatedTickets: Ticket[]) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedTickets));
     setTickets(updatedTickets);
   };
 
-  const handleStatusChange = (id: string, newStatus: TicketStatus) => {
-    const updated = tickets.map(t => t.id === id ? { ...t, status: newStatus } : t);
+  const handleStatusChange = async (id: string, newStatus: TicketStatus) => {
+    const updated = tickets.map((t) => (t.id === id ? { ...t, status: newStatus } : t));
     saveTickets(updated);
+
+    if (session) {
+      try {
+        await updateTicketRequest(session, id, { status: newStatus });
+      } catch {
+        // Fallback já refletido na interface local
+      }
+    }
   };
 
   const filteredTickets = useMemo(() => {

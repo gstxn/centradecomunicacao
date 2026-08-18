@@ -1,7 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { Building2, Plus, RefreshCw, ShieldCheck, Users, CheckCircle2, ArrowRight, X, UserPlus, Mail, Lock, User } from 'lucide-react';
+import { Building2, Plus, RefreshCw, ShieldCheck, Users, CheckCircle2, ArrowRight, X, UserPlus, Mail, Lock, User, KeyRound, Ban } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { getDepartments, getTenantUsers, createCompanyRequest, createTenantUserRequest, type Department, type TenantUser, type SystemRole } from '../../services/api';
+import {
+  getDepartments,
+  getTenantUsers,
+  createCompanyRequest,
+  createTenantUserRequest,
+  updateTenantUserRequest,
+  toggleTenantUserStatusRequest,
+  resetTenantUserPasswordRequest,
+  type Department,
+  type TenantUser,
+  type SystemRole
+} from '../../services/api';
 import styles from './TenantAdmin.module.css';
 
 export const TenantAdmin: React.FC = () => {
@@ -131,6 +142,43 @@ export const TenantAdmin: React.FC = () => {
     }
   };
 
+  const handleChangeRole = async (userId: string, newRole: SystemRole) => {
+    if (!session) return;
+    try {
+      await updateTenantUserRequest(session, userId, { role: newRole });
+      setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u)));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao atualizar papel.');
+    }
+  };
+
+  const handleToggleStatus = async (userId: string, userName: string) => {
+    if (!session) return;
+    if (!confirm(`Deseja alternar o status de acesso de ${userName}?`)) return;
+    try {
+      const res = await toggleTenantUserStatusRequest(session, userId);
+      alert(`Status de ${userName} alterado para: ${res.data.status === 'active' ? 'Ativo' : 'Suspenso'}`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao alterar status.');
+    }
+  };
+
+  const handleResetPassword = async (userId: string, userName: string) => {
+    if (!session) return;
+    const newPass = prompt(`Digite a nova senha provisória para ${userName} (mínimo 12 caracteres):`);
+    if (!newPass) return;
+    if (newPass.length < 12) {
+      alert('A nova senha deve possuir pelo menos 12 caracteres.');
+      return;
+    }
+    try {
+      await resetTenantUserPasswordRequest(session, userId, newPass);
+      alert(`Senha de ${userName} redefinida com sucesso!`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao redefinir senha.');
+    }
+  };
+
   const toggleDeptSelection = (deptId: string) => {
     setNewUserDepts((prev) =>
       prev.includes(deptId) ? prev.filter((id) => id !== deptId) : [...prev, deptId]
@@ -232,14 +280,79 @@ export const TenantAdmin: React.FC = () => {
           </div>
           <div className={styles.list}>
             {users.map((u) => (
-              <article key={u.id} className={styles.listItem}>
-                <div className={styles.avatar}>{u.name.charAt(0)}</div>
-                <div className={styles.itemContent}>
-                  <strong>{u.name}</strong>
-                  <span>{u.email}</span>
-                  <small>{u.departments.join(', ') || 'Sem departamento'}</small>
+              <article key={u.id} className={styles.listItem} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.8rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                  <div className={styles.avatar}>{u.name.charAt(0)}</div>
+                  <div className={styles.itemContent}>
+                    <strong>{u.name}</strong>
+                    <span>{u.email}</span>
+                    <small>{u.departments.join(', ') || 'Sem departamento'}</small>
+                  </div>
                 </div>
-                <span className={styles.role}>{u.role}</span>
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}>
+                  {canManageUsers ? (
+                    <>
+                      <select
+                        value={u.role}
+                        onChange={(e) => handleChangeRole(u.id, e.target.value as SystemRole)}
+                        style={{
+                          padding: '0.3rem 0.6rem',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border-color, #2d3345)',
+                          background: 'var(--bg-main, #0f121a)',
+                          color: 'inherit',
+                          fontSize: '0.8rem',
+                          fontWeight: 600
+                        }}
+                      >
+                        <option value="owner">owner</option>
+                        <option value="admin">admin</option>
+                        <option value="publisher">publisher</option>
+                        <option value="manager">manager</option>
+                        <option value="employee">employee</option>
+                        <option value="auditor">auditor</option>
+                        <option value="support">support</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => handleResetPassword(u.id, u.name)}
+                        title="Redefinir senha temporária"
+                        style={{
+                          background: 'none',
+                          border: '1px solid var(--border-color, #2d3345)',
+                          color: 'var(--text-muted, #94a3b8)',
+                          borderRadius: '6px',
+                          padding: '0.4rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center'
+                        }}
+                      >
+                        <KeyRound size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleStatus(u.id, u.name)}
+                        title="Alternar Ativo / Suspenso"
+                        style={{
+                          background: 'none',
+                          border: '1px solid var(--border-color, #2d3345)',
+                          color: 'var(--text-muted, #94a3b8)',
+                          borderRadius: '6px',
+                          padding: '0.4rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center'
+                        }}
+                      >
+                        <Ban size={14} />
+                      </button>
+                    </>
+                  ) : (
+                    <span className={styles.role}>{u.role}</span>
+                  )}
+                </div>
               </article>
             ))}
           </div>

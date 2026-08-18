@@ -1,15 +1,18 @@
-import React, { useMemo, useState } from 'react';
-import { Archive, ArrowDownToLine, ArrowUpRight, BookMarked, FileCheck2, FileText, Folder, Search, ShieldCheck, Sparkles } from 'lucide-react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Archive, ArrowDownToLine, ArrowUpRight, BookMarked, FileCheck2, FileText, Folder, Plus, Search, ShieldCheck, Sparkles, X } from 'lucide-react';
 import styles from './DocumentLibrary.module.css';
+import { useAuth } from '../../context/AuthContext';
+import { getDocuments, createDocumentRequest, type ApiDocument } from '../../services/api';
 
 export interface CorporateDocument {
   id: string;
   name: string;
   code: string;
-  dept: 'Qualidade' | 'Operações' | 'Pessoas' | 'Tecnologia';
+  dept: string;
   version: string;
   updated: string;
   status: 'Vigente' | 'Em revisão' | 'Obsoleto';
+  validUntil?: string;
   description?: string;
 }
 
@@ -22,6 +25,7 @@ const initialDocuments: CorporateDocument[] = [
     version: 'v4.2',
     updated: '10/08/2026',
     status: 'Vigente',
+    validUntil: '31/12/2027',
     description: 'Diretrizes oficiais para manipulação de amostras, EPIs e descarte de resíduos biológicos.'
   },
   {
@@ -32,74 +36,122 @@ const initialDocuments: CorporateDocument[] = [
     version: 'v2.8',
     updated: '05/08/2026',
     status: 'Vigente',
+    validUntil: '30/06/2027',
     description: 'Fluxograma de acolhimento, conferência de guias de convênio e prioridades de atendimento.'
   },
   {
     id: 'doc-3',
     name: 'Política de Segurança da Informação e Gestão de Senhas',
     code: 'POL-TI-005',
-    dept: 'Tecnologia',
+    dept: 'Tecnologia da Informação',
     version: 'v3.0',
     updated: '12/08/2026',
     status: 'Vigente',
+    validUntil: '31/12/2026',
     description: 'Regras de acesso a sistemas internos, 2FA, uso aceitável de dispositivos e LGPD.'
-  },
-  {
-    id: 'doc-4',
-    name: 'Código de Conduta Ética e Regimento Interno',
-    code: 'MAN-RH-002',
-    dept: 'Pessoas',
-    version: 'v2.1',
-    updated: '20/07/2026',
-    status: 'Vigente',
-    description: 'Normas de convivência, canais de ouvidoria, benefícios e políticas de desenvolvimento.'
-  },
-  {
-    id: 'doc-5',
-    name: 'Plano de Contingência em Caso de Queda do Sistema SHIFT/LIS',
-    code: 'POP-TI-018',
-    dept: 'Tecnologia',
-    version: 'v1.9',
-    updated: '02/08/2026',
-    status: 'Vigente',
-    description: 'Roteiro manual para lançamento de exames urgentes durante indisponibilidade do banco.'
-  },
-  {
-    id: 'doc-6',
-    name: 'Protocolo de Higienização e Calibração de Centrífugas e Equipamentos',
-    code: 'POP-QUAL-009',
-    dept: 'Qualidade',
-    version: 'v3.5',
-    updated: '28/07/2026',
-    status: 'Vigente',
-    description: 'Checklist diário e semanal para conservação e controle de qualidade de equipamentos.'
-  },
-  {
-    id: 'doc-7',
-    name: 'Guia de Benefícios, Reembolsos e Auxílio Educação',
-    code: 'GUI-RH-008',
-    dept: 'Pessoas',
-    version: 'v1.4',
-    updated: '15/06/2026',
-    status: 'Vigente',
-    description: 'Critérios para concessão de bolsas de estudo, vale alimentação e plano de saúde.'
-  },
-  {
-    id: 'doc-8',
-    name: 'Procedimento Antigo de Liberação Manual de Laudos (Substituído)',
-    code: 'POP-OPE-003',
-    dept: 'Operações',
-    version: 'v1.0',
-    updated: '10/01/2024',
-    status: 'Obsoleto',
-    description: 'Documento revogado pelo POP-OPE-012.'
   }
 ];
 
 export const DocumentLibrary: React.FC = () => {
-  const [documents] = useState<CorporateDocument[]>(initialDocuments);
+  const { session, user, activeCompany } = useAuth();
+  const [documents, setDocuments] = useState<CorporateDocument[]>(initialDocuments);
   const [query, setQuery] = useState('');
   const [collection, setCollection] = useState('Todos');
+  
+  // Modal de novo documento
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newCode, setNewCode] = useState('');
+  const [newDept, setNewDept] = useState('Qualidade');
+  const [newVersion, setNewVersion] = useState('v1.0');
+  const [newStatus, setNewStatus] = useState<'Vigente' | 'Em revisão' | 'Obsoleto'>('Vigente');
+  const [newValidUntil, setNewValidUntil] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const canManageDocs = user?.isSaaSAdmin || ['owner', 'admin', 'publisher'].includes(activeCompany?.membership?.role || '');
+
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    getDocuments(session)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.data && res.data.length > 0) {
+          setDocuments(res.data.map((d: ApiDocument) => ({
+            id: d.id,
+            name: d.name,
+            code: d.code,
+            dept: d.department,
+            version: d.version,
+            updated: new Intl.DateTimeFormat('pt-BR').format(new Date(d.updatedAt || d.createdAt)),
+            status: d.status,
+            validUntil: d.validUntil ? new Intl.DateTimeFormat('pt-BR').format(new Date(d.validUntil)) : undefined,
+            description: d.description
+          })));
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [session, activeCompany?.id]);
+
+  const handleCreateDocument = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName.trim() || !newCode.trim()) return;
+
+    setIsSubmitting(true);
+    try {
+      if (session) {
+        const res = await createDocumentRequest(session, {
+          name: newName.trim(),
+          code: newCode.trim(),
+          department: newDept,
+          version: newVersion.trim() || 'v1.0',
+          status: newStatus,
+          validUntil: newValidUntil || undefined,
+          description: newDesc.trim() || undefined
+        });
+
+        const created: CorporateDocument = {
+          id: res.data.id,
+          name: res.data.name,
+          code: res.data.code,
+          dept: res.data.department,
+          version: res.data.version,
+          updated: new Intl.DateTimeFormat('pt-BR').format(new Date()),
+          status: res.data.status,
+          validUntil: res.data.validUntil ? new Intl.DateTimeFormat('pt-BR').format(new Date(res.data.validUntil)) : undefined,
+          description: res.data.description
+        };
+
+        setDocuments([created, ...documents]);
+      } else {
+        const created: CorporateDocument = {
+          id: `doc-${Date.now()}`,
+          name: newName.trim(),
+          code: newCode.trim(),
+          dept: newDept,
+          version: newVersion.trim() || 'v1.0',
+          updated: new Intl.DateTimeFormat('pt-BR').format(new Date()),
+          status: newStatus,
+          validUntil: newValidUntil ? new Intl.DateTimeFormat('pt-BR').format(new Date(newValidUntil)) : undefined,
+          description: newDesc.trim() || undefined
+        };
+        setDocuments([created, ...documents]);
+      }
+
+      setNewName('');
+      setNewCode('');
+      setNewVersion('v1.0');
+      setNewValidUntil('');
+      setNewDesc('');
+      setIsModalOpen(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao cadastrar documento.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     return documents.filter((doc) => {
@@ -169,6 +221,26 @@ Para consultar a versão mais recente, acesse a Biblioteca de Documentos no Work
             <em>permanece.</em>
           </h1>
           <p>Procedimentos, manuais e diretrizes oficiais. Uma única fonte de verdade.</p>
+          {canManageDocs && (
+            <button
+              onClick={() => setIsModalOpen(true)}
+              style={{
+                marginTop: '1rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.6rem 1.2rem',
+                background: 'var(--primary)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              <Plus size={16} /> Cadastrar Documento / POP
+            </button>
+          )}
         </div>
         <div className={styles.heroStats}>
           <span>
@@ -185,6 +257,128 @@ Para consultar a versão mais recente, acesse a Biblioteca de Documentos no Work
           </span>
         </div>
       </header>
+
+      {isModalOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: 'var(--card-bg, #1a1e29)',
+            border: '1px solid var(--border-color, #2d3345)',
+            borderRadius: '12px',
+            padding: '2rem',
+            maxWidth: '520px',
+            width: '100%',
+            color: 'var(--text-main, #fff)',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.4)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Cadastrar Novo Documento / POP</h2>
+              <button onClick={() => setIsModalOpen(false)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleCreateDocument} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Título do Documento</label>
+                <input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Ex: Protocolo de Biossegurança"
+                  required
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-main)', color: 'inherit' }}
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Código Oficial</label>
+                  <input
+                    value={newCode}
+                    onChange={(e) => setNewCode(e.target.value)}
+                    placeholder="Ex: POP-QUAL-015"
+                    required
+                    style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-main)', color: 'inherit' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Versão</label>
+                  <input
+                    value={newVersion}
+                    onChange={(e) => setNewVersion(e.target.value)}
+                    placeholder="v1.0"
+                    required
+                    style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-main)', color: 'inherit' }}
+                  />
+                </div>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Departamento</label>
+                <select
+                  value={newDept}
+                  onChange={(e) => setNewDept(e.target.value)}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-main)', color: 'inherit' }}
+                >
+                  <option value="Qualidade">Qualidade</option>
+                  <option value="Operações">Operações</option>
+                  <option value="Tecnologia da Informação">Tecnologia da Informação</option>
+                  <option value="Pessoas">Pessoas / RH</option>
+                  <option value="Geral">Geral</option>
+                </select>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Status da Vigência</label>
+                  <select
+                    value={newStatus}
+                    onChange={(e) => setNewStatus(e.target.value as any)}
+                    style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-main)', color: 'inherit' }}
+                  >
+                    <option value="Vigente">Vigente</option>
+                    <option value="Em revisão">Em revisão</option>
+                    <option value="Obsoleto">Obsoleto</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Data Limite de Validade</label>
+                  <input
+                    type="date"
+                    value={newValidUntil}
+                    onChange={(e) => setNewValidUntil(e.target.value)}
+                    max="9999-12-31"
+                    style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-main)', color: 'inherit' }}
+                  />
+                </div>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Descrição do Escopo / Resumo</label>
+                <textarea
+                  value={newDesc}
+                  onChange={(e) => setNewDesc(e.target.value)}
+                  placeholder="Diretrizes gerais sobre o procedimento..."
+                  rows={3}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-main)', color: 'inherit' }}
+                />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.8rem', marginTop: '0.5rem' }}>
+                <button type="button" onClick={() => setIsModalOpen(false)} style={{ padding: '0.6rem 1.2rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'transparent', color: 'inherit', cursor: 'pointer' }}>
+                  Cancelar
+                </button>
+                <button type="submit" disabled={isSubmitting} style={{ padding: '0.6rem 1.2rem', borderRadius: '6px', border: 'none', background: 'var(--primary)', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+                  {isSubmitting ? 'Salvando...' : 'Salvar Documento'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <div className={styles.workspace}>
         <aside className={styles.collections}>
@@ -244,9 +438,25 @@ Para consultar a versão mais recente, acesse a Biblioteca de Documentos no Work
                   </span>
                   <div className={styles.docCopy}>
                     <strong>{doc.name}</strong>
-                    <small>
-                      {doc.code} · {doc.status.toUpperCase()}
-                    </small>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem', flexWrap: 'wrap' }}>
+                      <small style={{ fontWeight: 600 }}>{doc.code}</small>
+                      <span style={{
+                        fontSize: '0.7rem',
+                        padding: '0.1rem 0.4rem',
+                        borderRadius: '4px',
+                        fontWeight: 700,
+                        background: doc.status === 'Vigente' ? 'rgba(34, 197, 94, 0.15)' : doc.status === 'Em revisão' ? 'rgba(234, 179, 8, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                        color: doc.status === 'Vigente' ? '#22c55e' : doc.status === 'Em revisão' ? '#eab308' : '#ef4444',
+                        border: `1px solid ${doc.status === 'Vigente' ? 'rgba(34, 197, 94, 0.3)' : doc.status === 'Em revisão' ? 'rgba(234, 179, 8, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
+                      }}>
+                        {doc.status.toUpperCase()}
+                      </span>
+                      {doc.validUntil && (
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                          · Validade: {doc.validUntil}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <span className={styles.dept}>{doc.dept}</span>
                   <span className={styles.version}>{doc.version}</span>

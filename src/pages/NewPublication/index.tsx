@@ -11,15 +11,21 @@ import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
 import styles from './NewPublication.module.css';
 import { useComunicados } from '../../context/ComunicadosContext';
+import { useAuth } from '../../context/AuthContext';
+import { uploadAttachmentRequest } from '../../services/api';
 
 export const NewPublication: React.FC = () => {
   const navigate = useNavigate();
+  const { session } = useAuth();
   const { addComunicado } = useComunicados();
   const [content, setContent] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Sistemas');
   const [type, setType] = useState<'Informativo' | 'Urgente' | 'Atualização'>('Informativo');
+  const [targetAudience, setTargetAudience] = useState('Toda a empresa');
+  const [validFrom, setValidFrom] = useState(new Date().toISOString().split('T')[0]);
+  const [validUntil, setValidUntil] = useState('');
   const [formError, setFormError] = useState('');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -66,6 +72,18 @@ export const NewPublication: React.FC = () => {
     fileInputRef.current?.click();
   };
 
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64 = result.includes(',') ? result.split(',')[1] : result;
+        resolve(base64 ?? '');
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
@@ -79,11 +97,31 @@ export const NewPublication: React.FC = () => {
     setFormError('');
     
     try {
+      const attachmentIds: string[] = [];
+      if (session && files.length > 0) {
+        for (const file of files) {
+          const dataBase64 = await fileToBase64(file);
+          const uploaded = await uploadAttachmentRequest(session, {
+            filename: file.name,
+            mimeType: file.type || 'application/octet-stream',
+            sizeBytes: file.size,
+            dataBase64
+          });
+          if (uploaded.data?.id) {
+            attachmentIds.push(uploaded.data.id);
+          }
+        }
+      }
+
       await addComunicado({
         title,
         category,
         type,
         content,
+        targetAudience,
+        validFrom,
+        validUntil: validUntil || undefined,
+        attachmentIds,
         attachments: files.map(f => ({
           name: f.name,
           size: (f.size / 1024 / 1024).toFixed(2) + ' MB',
@@ -175,18 +213,47 @@ export const NewPublication: React.FC = () => {
           <div className={styles.formGrid}>
             <div className={styles.formGroup}>
               <label className={styles.label} htmlFor="publication-audience">Público Destinatário</label>
-              <select id="publication-audience" className={styles.select}>
-                <option value="todos">Toda a empresa</option>
-                <option value="gestores">Apenas gestores</option>
-                <option value="operacao">Setor de Operações</option>
-                <option value="matriz">Apenas Matriz</option>
-                <option value="custom">Personalizado...</option>
+              <select
+                id="publication-audience"
+                className={styles.select}
+                value={targetAudience}
+                onChange={(e) => setTargetAudience(e.target.value)}
+              >
+                <option value="Toda a empresa">Toda a empresa (Geral)</option>
+                <option value="Apenas Gestores de Unidade">Apenas Gestores de Unidade</option>
+                <option value="Recepção e Atendimento">Recepção e Atendimento</option>
+                <option value="Coleta e Enfermagem">Coleta e Enfermagem</option>
+                <option value="Laboratório e Técnica">Laboratório e Análises Clínicas</option>
+                <option value="Tecnologia da Informação">Tecnologia da Informação (TI)</option>
+                <option value="Qualidade">Qualidade e Biossegurança</option>
+                <option value="Recursos Humanos">Recursos Humanos (RH)</option>
+                <option value="Comercial e Faturamento">Comercial e Faturamento</option>
               </select>
             </div>
 
             <div className={styles.formGroup}>
-              <label className={styles.label} htmlFor="publication-expiration">Data de Fim de Vigência</label>
-              <input id="publication-expiration" type="date" className={styles.input} max="9999-12-31" />
+              <label className={styles.label} htmlFor="publication-valid-from">Início da Vigência</label>
+              <input
+                id="publication-valid-from"
+                type="date"
+                className={styles.input}
+                value={validFrom}
+                onChange={(e) => setValidFrom(e.target.value)}
+                max="9999-12-31"
+              />
+            </div>
+
+            <div className={styles.formGroup}>
+              <label className={styles.label} htmlFor="publication-expiration">Término da Vigência (Opcional)</label>
+              <input
+                id="publication-expiration"
+                type="date"
+                className={styles.input}
+                value={validUntil}
+                onChange={(e) => setValidUntil(e.target.value)}
+                placeholder="Indeterminado se vazio"
+                max="9999-12-31"
+              />
             </div>
 
             <div className={`${styles.formGroup} ${styles.full}`}>

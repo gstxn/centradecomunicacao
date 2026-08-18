@@ -10,7 +10,9 @@ import {
   Clock,
   FileText,
   Gauge,
+  Globe,
   Headphones,
+  HelpCircle,
   LayoutGrid,
   MessageSquare,
   Plus,
@@ -35,11 +37,14 @@ interface SidebarProps {
 const navigation = [
   { icon: LayoutGrid, label: 'Visão geral', detail: 'Seu dia de trabalho', path: '/' },
   { icon: MessageSquare, label: 'Mural', detail: 'Comunicados e ciência', path: '/comunicados', badge: '05' },
+  { icon: Globe, label: 'Links Rápidos', detail: 'Sistemas oficiais homologados', path: '/links' },
+  { icon: HelpCircle, label: 'Conhecimento / FAQ', detail: 'Dúvidas e procedimentos', path: '/conhecimento' },
   { icon: FileText, label: 'Documentos', detail: 'Biblioteca corporativa', path: '/documentos' },
   { icon: Headphones, label: 'Chamados', detail: 'Suporte e solicitações', path: '/suporte' },
 ];
 
 const workspace = [
+  { icon: Globe, label: 'Links Rápidos', path: '/links' },
   { icon: Clock, label: 'Pendências', path: '/pendencias' },
   { icon: CalendarDays, label: 'Agenda', path: '/calendario' },
   { icon: BookOpen, label: 'Minhas leituras', path: '/leituras' },

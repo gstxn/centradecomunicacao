@@ -1,20 +1,68 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Calendar, User, Users, Paperclip, Download, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Calendar, User, Users, Paperclip, Download, CheckCircle2, Loader2 } from 'lucide-react';
 import styles from './ComunicadoDetail.module.css';
 import { useComunicados } from '../../context/ComunicadosContext';
+import { useAuth } from '../../context/AuthContext';
+import { getAttachmentRequest } from '../../services/api';
 import { sanitizeHtml } from '../../utils/sanitizeHtml';
 
 export const ComunicadoDetail: React.FC = () => {
   const { id } = useParams();
   const { comunicados, markAsRead } = useComunicados();
+  const { session } = useAuth();
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   // Encontra o comunicado pelo ID na URL
-  const comunicado = comunicados.find(c => c.id === id);
+  const comunicado = comunicados.find((c) => c.id === id);
 
   const handleConfirm = () => {
     if (comunicado) {
       markAsRead(comunicado.id);
+    }
+  };
+
+  const handleDownloadAttachment = async (attach: { id?: string; name: string; size: string; type: string }) => {
+    if (!attach.id || !session) {
+      const fallbackContent = `Anexo: ${attach.name}\nTamanho: ${attach.size}\nTipo: ${attach.type}\nComunicado: ${comunicado?.title ?? ''}`;
+      const blob = new Blob([fallbackContent], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = attach.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    setDownloadingId(attach.id);
+    try {
+      const res = await getAttachmentRequest(session, attach.id);
+      if (res.data?.dataBase64) {
+        const byteCharacters = atob(res.data.dataBase64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: res.data.mimeType || 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = res.data.filename || attach.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else {
+        alert('Conteúdo do anexo indisponível.');
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao baixar anexo.');
+    } finally {
+      setDownloadingId(null);
     }
   };
 
@@ -54,13 +102,19 @@ export const ComunicadoDetail: React.FC = () => {
               <Calendar size={16} />
               Publicado em {comunicado.date}
             </div>
+            {comunicado.validUntil && (
+              <div className={styles.metaItem} style={{ color: 'var(--color-primary-accent)', fontWeight: 600 }}>
+                <Calendar size={16} />
+                Vigência até: {new Intl.DateTimeFormat('pt-BR').format(new Date(comunicado.validUntil))}
+              </div>
+            )}
             <div className={styles.metaItem}>
               <User size={16} />
               {comunicado.author}
             </div>
             <div className={styles.metaItem}>
               <Users size={16} />
-              Público: Toda a empresa
+              Público: {comunicado.targetAudience || 'Toda a empresa'}
             </div>
           </div>
         </header>
@@ -94,7 +148,17 @@ export const ComunicadoDetail: React.FC = () => {
             </h4>
             <div className={styles.attachList}>
               {comunicado.attachments.map((attach, index) => (
-                <div key={index} className={styles.attachItem} aria-label={`Anexo ${attach.name}`}>
+                <div
+                  key={index}
+                  className={styles.attachItem}
+                  onClick={() => handleDownloadAttachment(attach)}
+                  style={{ cursor: 'pointer' }}
+                  title="Clique para baixar o arquivo"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleDownloadAttachment(attach); }}
+                  aria-label={`Baixar anexo ${attach.name}`}
+                >
                   <div className={styles.attachLeft}>
                     <div style={{padding: '0.5rem', backgroundColor: 'var(--color-bg-body)', color: 'var(--color-text-main)', borderRadius: '4px', border: '1px solid var(--color-border)', fontSize: '0.8rem', fontWeight: 600}}>
                       {attach.type}
@@ -104,7 +168,11 @@ export const ComunicadoDetail: React.FC = () => {
                       <div className={styles.attachSize}>{attach.size}</div>
                     </div>
                   </div>
-                  <Download size={20} color="var(--color-text-muted)" aria-hidden="true" />
+                  {downloadingId === attach.id ? (
+                    <Loader2 size={20} className="spin" color="var(--color-primary-accent)" />
+                  ) : (
+                    <Download size={20} color="var(--color-text-muted)" aria-hidden="true" />
+                  )}
                 </div>
               ))}
             </div>

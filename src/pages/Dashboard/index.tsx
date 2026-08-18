@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowUpRight, BookOpen, CalendarDays, Check, ChevronRight, CircleAlert, Clock3, FileText, Headphones, MessageSquare, Plus, Sparkles } from 'lucide-react';
+import { ArrowUpRight, BookOpen, CalendarDays, Check, ChevronRight, CircleAlert, Clock3, ExternalLink, FileText, Globe, HelpCircle, MessageSquare, Plus, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useComunicados } from '../../context/ComunicadosContext';
@@ -9,6 +9,41 @@ const events = [
   { day: '18', title: 'Treinamento 2FA e Segurança', time: '14:00', place: 'Online (Teams)' },
   { day: '21', title: 'Alinhamento de Indicadores Q3', time: '09:00', place: 'Sala 3 (Matriz)' },
   { day: '25', title: 'Manutenção de Infraestrutura', time: '23:00', place: 'Servidores Matriz' }
+];
+
+const officialSystems = [
+  {
+    id: 'acreditese',
+    name: 'Acredite.se',
+    badge: 'OFICIAL & QUALIDADE',
+    desc: 'Manutenção predial, infraestrutura, ocorrências, não conformidades e treinamentos.',
+    url: 'https://acredite.se',
+    logo: '/images/acreditese.png'
+  },
+  {
+    id: 'shift',
+    name: 'SHIFT - Sistema LIS',
+    badge: 'LIS OPERAÇÃO',
+    desc: 'Gestão laboratorial, recepção de pacientes, triagem, mapa de bancada e laudos.',
+    url: 'https://shift.centraldeexames.com.br',
+    logo: '/images/shift.png'
+  },
+  {
+    id: 'myblood',
+    name: 'iBlood / MyBlood',
+    badge: 'BANCO DE SANGUE',
+    desc: 'Gestão de hemoterapia, triagem de doadores, estoque e controle transfusional.',
+    url: 'https://iblood.centraldeexames.com.br',
+    logo: '/images/myblood.png'
+  },
+  {
+    id: 'pardini',
+    name: 'myPardini',
+    badge: 'LAB APOIO',
+    desc: 'Laboratório de apoio especializado, envio de exames terceirizados e prazos.',
+    url: 'https://mypardini.com.br',
+    logo: '/images/pardini.png'
+  }
 ];
 
 export const Dashboard: React.FC = () => {
@@ -55,8 +90,8 @@ export const Dashboard: React.FC = () => {
           <div className={styles.legend}><span>{pulseScore === 100 ? 'Você está em dia' : 'Leituras em andamento'}</span><span>{unread.length} pendentes</span></div>
         </article>
         <article className={styles.quickAction}>
-          <div><span>ATALHO</span><h3>Precisa de ajuda<br/>com tecnologia?</h3></div>
-          <Link to="/suporte"><Headphones size={18}/><span>Abrir chamado</span><ChevronRight size={15}/></Link>
+          <div><span>SISTEMAS HOMOLOGADOS</span><h3>Acesso Rápido<br/>às Plataformas</h3></div>
+          <Link to="/links"><Globe size={18}/><span>Ver todos os atalhos</span><ChevronRight size={15}/></Link>
         </article>
       </div>
 
@@ -76,8 +111,48 @@ export const Dashboard: React.FC = () => {
       </article>
     </section>
 
+    {/* Seção de Links Rápidos e Sistemas Oficiais na Dashboard */}
+    <section className={styles.systemsSection}>
+      <div className={styles.systemsHeader}>
+        <div className={styles.systemsHeaderLeft}>
+          <span className={styles.sectionLabel}><Globe size={14}/> LINKS RÁPIDOS & SISTEMAS HOMOLOGADOS</span>
+          <h2>Acesso Direto aos Sistemas Oficiais</h2>
+          <p>Plataformas corporativas homologadas para atendimento, laudos, ocorrências e exames de apoio.</p>
+        </div>
+        <Link to="/links" className={styles.systemsManageLink}>
+          Ver todos os atalhos e links <ChevronRight size={14}/>
+        </Link>
+      </div>
+
+      <div className={styles.systemsGrid}>
+        {officialSystems.map((sys) => (
+          <a
+            key={sys.id}
+            href={sys.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.systemCard}
+          >
+            <div className={styles.systemLogoWrapper}>
+              <img src={sys.logo} alt={sys.name} className={styles.systemLogo} />
+            </div>
+            <div className={styles.systemCardTop}>
+              <span className={styles.systemTitle}>{sys.name}</span>
+              <ExternalLink size={14} className={styles.systemExternalIcon} />
+            </div>
+            <p className={styles.systemDesc}>{sys.desc}</p>
+            <div className={styles.systemCardFooter}>
+              <span className={styles.systemBadge}>{sys.badge}</span>
+              <span className={styles.systemActionText}>Acessar <ArrowUpRight size={12} /></span>
+            </div>
+          </a>
+        ))}
+      </div>
+    </section>
+
     <section className={styles.utilityStrip}>
       <div className={styles.utilityIntro}><Sparkles size={16}/><span>SEU ESPAÇO DE TRABALHO</span></div>
+      <Link to="/conhecimento"><HelpCircle/><span><small>BASE FAQ</small><strong>Conhecimento</strong></span></Link>
       <Link to="/pendencias"><Clock3/><span><small>PENDÊNCIAS</small><strong>{unread.length} itens</strong></span></Link>
       <Link to="/documentos"><FileText/><span><small>DOCUMENTOS</small><strong>Biblioteca</strong></span></Link>
       <Link to="/leituras"><Check/><span><small>MINHA CIÊNCIA</small><strong>Histórico</strong></span></Link>

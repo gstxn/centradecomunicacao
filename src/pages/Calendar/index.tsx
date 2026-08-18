@@ -1,11 +1,13 @@
-import React, { useMemo, useState } from 'react';
-import { Clock, MapPin, Users, Calendar as CalendarIcon } from 'lucide-react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Clock, MapPin, Users, Calendar as CalendarIcon, Plus, X } from 'lucide-react';
 import styles from './Calendar.module.css';
+import { useAuth } from '../../context/AuthContext';
+import { getCalendarEvents, createCalendarEventRequest, type ApiCalendarEvent } from '../../services/api';
 
 interface CalendarEvent {
-  id: number;
+  id: string | number;
   title: string;
-  type: 'Treinamentos' | 'Manutenções' | 'Reuniões' | 'Auditorias';
+  type: string;
   month: string;
   day: string;
   weekday: string;
@@ -16,7 +18,7 @@ interface CalendarEvent {
   color: string;
 }
 
-const allEvents: CalendarEvent[] = [
+const initialEvents: CalendarEvent[] = [
   {
     id: 1,
     title: 'Treinamento: Nova rotina de cadastro e segurança 2FA',
@@ -55,51 +57,120 @@ const allEvents: CalendarEvent[] = [
     audience: 'Toda a empresa',
     description: 'Parada programada para aplicação de patches de segurança e backup geral dos sistemas.',
     color: 'var(--color-primary-accent)'
-  },
-  {
-    id: 4,
-    title: 'Auditoria Interna de Qualidade e Biossegurança',
-    type: 'Auditorias',
-    month: 'Agosto 2026',
-    day: '28',
-    weekday: 'Sexta',
-    time: '08:00 - 18:00',
-    location: 'Unidade Central',
-    audience: 'Equipe de Qualidade e Laboratório',
-    description: 'Preparação para renovação da certificação e verificação dos novos POPs cadastrados.',
-    color: 'var(--color-success)'
-  },
-  {
-    id: 5,
-    title: 'Workshop de Boas Práticas no Atendimento Humanizado',
-    type: 'Treinamentos',
-    month: 'Setembro 2026',
-    day: '04',
-    weekday: 'Sexta',
-    time: '10:00 - 12:00',
-    location: 'Auditório Matriz',
-    audience: 'Atendimento e Coleta',
-    description: 'Aprimoramento de técnicas de acolhimento e comunicação não violenta no atendimento ao paciente.',
-    color: 'var(--color-purple)'
-  },
-  {
-    id: 6,
-    title: 'Comitê Executivo de Gestão e Planejamento 2027',
-    type: 'Reuniões',
-    month: 'Setembro 2026',
-    day: '15',
-    weekday: 'Terça',
-    time: '14:30 - 17:00',
-    location: 'Sala da Diretoria',
-    audience: 'Diretoria e Sócios',
-    description: 'Apresentação de balanço e metas de expansão para as novas unidades.',
-    color: 'var(--color-warning)'
   }
 ];
 
 export const CalendarPage: React.FC = () => {
-  const [selectedMonth, setSelectedMonth] = useState('Agosto 2026');
+  const { session, user, activeCompany } = useAuth();
+  const [allEvents, setAllEvents] = useState<CalendarEvent[]>(initialEvents);
+  const [selectedMonth, setSelectedMonth] = useState('Todos os meses');
   const [selectedType, setSelectedType] = useState('Todos');
+
+  // Modal de novo evento
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newDate, setNewDate] = useState('');
+  const [newLocation, setNewLocation] = useState('');
+  const [newType, setNewType] = useState('Treinamentos');
+  const [newAudience, setNewAudience] = useState('Geral');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const canManageEvents = user?.isSaaSAdmin || ['owner', 'admin', 'publisher'].includes(activeCompany?.membership?.role || '');
+
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    getCalendarEvents(session)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.data && res.data.length > 0) {
+          setAllEvents(res.data.map((e: ApiCalendarEvent) => {
+            const dateObj = new Date(e.eventDate);
+            const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+            const weekdays = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+            return {
+              id: e.id,
+              title: e.title,
+              type: 'Eventos',
+              month: `${months[dateObj.getMonth()]} ${dateObj.getFullYear()}`,
+              day: String(dateObj.getDate()).padStart(2, '0'),
+              weekday: weekdays[dateObj.getDay()],
+              time: '09:00 - 18:00',
+              location: e.location || 'Local a definir',
+              audience: 'Toda a empresa',
+              description: 'Evento corporativo oficial programado.',
+              color: e.color || '#3b82f6'
+            };
+          }));
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [session, activeCompany?.id]);
+
+  const handleCreateEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim() || !newDate) return;
+
+    setIsSubmitting(true);
+    try {
+      if (session) {
+        const res = await createCalendarEventRequest(session, {
+          title: newTitle.trim(),
+          eventDate: new Date(newDate).toISOString(),
+          location: newLocation.trim() || 'Online / Matriz',
+          color: '#3b82f6'
+        });
+
+        const dateObj = new Date(res.data.eventDate);
+        const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+        const weekdays = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+        const created: CalendarEvent = {
+          id: res.data.id,
+          title: res.data.title,
+          type: newType,
+          month: `${months[dateObj.getMonth()]} ${dateObj.getFullYear()}`,
+          day: String(dateObj.getDate()).padStart(2, '0'),
+          weekday: weekdays[dateObj.getDay()],
+          time: 'Horário comercial',
+          location: res.data.location || 'Local a definir',
+          audience: newAudience,
+          description: 'Evento corporativo registrado no sistema.',
+          color: res.data.color || '#3b82f6'
+        };
+        setAllEvents([...allEvents, created]);
+      } else {
+        const dateObj = new Date(newDate);
+        const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+        const weekdays = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+        const created: CalendarEvent = {
+          id: `cal-${Date.now()}`,
+          title: newTitle.trim(),
+          type: newType,
+          month: `${months[dateObj.getMonth()]} ${dateObj.getFullYear()}`,
+          day: String(dateObj.getDate()).padStart(2, '0'),
+          weekday: weekdays[dateObj.getDay()],
+          time: 'Horário comercial',
+          location: newLocation.trim() || 'Online / Matriz',
+          audience: newAudience,
+          description: 'Evento corporativo registrado no sistema.',
+          color: '#3b82f6'
+        };
+        setAllEvents([...allEvents, created]);
+      }
+
+      setNewTitle('');
+      setNewDate('');
+      setNewLocation('');
+      setIsModalOpen(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao agendar evento.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const filteredEvents = useMemo(() => {
     return allEvents.filter((event) => {
@@ -107,7 +178,7 @@ export const CalendarPage: React.FC = () => {
       const matchesType = selectedType === 'Todos' || event.type === selectedType;
       return matchesMonth && matchesType;
     });
-  }, [selectedMonth, selectedType]);
+  }, [allEvents, selectedMonth, selectedType]);
 
   // Group events by day
   const groupedEvents = useMemo(() => {
@@ -132,6 +203,27 @@ export const CalendarPage: React.FC = () => {
           </p>
         </div>
         <div className={styles.controls}>
+          {canManageEvents && (
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                padding: '0.5rem 0.9rem',
+                background: 'var(--color-primary-accent)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              <Plus size={14} /> Agendar Evento
+            </button>
+          )}
           <select
             className={styles.selectBox}
             value={selectedMonth}
@@ -156,6 +248,101 @@ export const CalendarPage: React.FC = () => {
           </select>
         </div>
       </div>
+
+      {isModalOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: 'var(--card-bg, #1a1e29)',
+            border: '1px solid var(--border-color, #2d3345)',
+            borderRadius: '12px',
+            padding: '2rem',
+            maxWidth: '520px',
+            width: '100%',
+            color: 'var(--text-main, #fff)',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.4)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Agendar Novo Evento Corporativo</h2>
+              <button onClick={() => setIsModalOpen(false)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleCreateEvent} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Título do Evento / Reunião</label>
+                <input
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder="Ex: Treinamento de Biossegurança"
+                  required
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-main)', color: 'inherit' }}
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Data do Evento</label>
+                  <input
+                    type="date"
+                    value={newDate}
+                    onChange={(e) => setNewDate(e.target.value)}
+                    required
+                    style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-main)', color: 'inherit' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Tipo</label>
+                  <select
+                    value={newType}
+                    onChange={(e) => setNewType(e.target.value)}
+                    style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-main)', color: 'inherit' }}
+                  >
+                    <option value="Treinamentos">Treinamentos</option>
+                    <option value="Reuniões">Reuniões</option>
+                    <option value="Manutenções">Manutenções</option>
+                    <option value="Auditorias">Auditorias</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Local / Plataforma</label>
+                <input
+                  value={newLocation}
+                  onChange={(e) => setNewLocation(e.target.value)}
+                  placeholder="Ex: Auditório Principal ou Online (Teams)"
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-main)', color: 'inherit' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Público-Alvo</label>
+                <input
+                  value={newAudience}
+                  onChange={(e) => setNewAudience(e.target.value)}
+                  placeholder="Ex: Toda a empresa, TI, Recepção"
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-main)', color: 'inherit' }}
+                />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.8rem', marginTop: '0.5rem' }}>
+                <button type="button" onClick={() => setIsModalOpen(false)} style={{ padding: '0.6rem 1.2rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'transparent', color: 'inherit', cursor: 'pointer' }}>
+                  Cancelar
+                </button>
+                <button type="submit" disabled={isSubmitting} style={{ padding: '0.6rem 1.2rem', borderRadius: '6px', border: 'none', background: 'var(--color-primary-accent)', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+                  {isSubmitting ? 'Salvando...' : 'Agendar Evento'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <div className={styles.contentCard}>
         {groupedEvents.length === 0 ? (

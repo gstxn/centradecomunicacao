@@ -49,6 +49,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
             Início
           </NavLink>
           <NavLink to="/comunicados">Mural</NavLink>
+          <NavLink to="/links">Links Rápidos</NavLink>
+          <NavLink to="/conhecimento">Conhecimento</NavLink>
           <NavLink to="/documentos">Documentos</NavLink>
           <NavLink to="/suporte">Chamados</NavLink>
         </nav>

@@ -11,7 +11,7 @@ export const getPool = (): any => {
     const isLocalhost = connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
     _pool = new PoolClass({
       connectionString,
-      connectionTimeoutMillis: 4000,
+      connectionTimeoutMillis: process.env.NODE_ENV === 'test' ? 1000 : 4000,
       idleTimeoutMillis: 10000,
       max: 5,
       ssl: isLocalhost ? false : { rejectUnauthorized: false }

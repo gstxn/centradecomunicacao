@@ -157,6 +157,43 @@ CREATE TABLE IF NOT EXISTS calendar_events (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS attachments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  uploaded_by uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  filename text NOT NULL,
+  mime_type text NOT NULL,
+  size_bytes bigint NOT NULL,
+  data_base64 text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS notice_attachments (
+  company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  notice_id uuid NOT NULL REFERENCES notices(id) ON DELETE CASCADE,
+  attachment_id uuid NOT NULL REFERENCES attachments(id) ON DELETE CASCADE,
+  PRIMARY KEY (notice_id, attachment_id)
+);
+
+CREATE TABLE IF NOT EXISTS login_attempts (
+  key text PRIMARY KEY,
+  failures integer NOT NULL DEFAULT 1,
+  window_started_at bigint NOT NULL,
+  blocked_until bigint NOT NULL DEFAULT 0,
+  last_attempt_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  action text NOT NULL,
+  entity_type text NOT NULL,
+  entity_id text NOT NULL,
+  metadata jsonb DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS auth_sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -223,6 +260,18 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
   CREATE POLICY tenant_calendar_events ON calendar_events USING (company_id = NULLIF(current_setting('app.company_id', true), '')::uuid) WITH CHECK (company_id = NULLIF(current_setting('app.company_id', true), '')::uuid);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY tenant_attachments ON attachments USING (company_id = NULLIF(current_setting('app.company_id', true), '')::uuid) WITH CHECK (company_id = NULLIF(current_setting('app.company_id', true), '')::uuid);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY tenant_notice_attachments ON notice_attachments USING (company_id = NULLIF(current_setting('app.company_id', true), '')::uuid) WITH CHECK (company_id = NULLIF(current_setting('app.company_id', true), '')::uuid);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY tenant_audit_logs ON audit_logs USING (company_id = NULLIF(current_setting('app.company_id', true), '')::uuid) WITH CHECK (company_id = NULLIF(current_setting('app.company_id', true), '')::uuid);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- 6. Função de Apoio

@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { loginRequest, logoutRequest, type ApiCompany, type ApiSession } from '../services/api';
 
@@ -86,6 +86,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     sessionStorage.removeItem(SESSION_KEY);
     setSession(null);
   }, []);
+
+  useEffect(() => {
+    const handleExpired = () => {
+      logout();
+    };
+    window.addEventListener('auth:expired', handleExpired);
+    return () => {
+      window.removeEventListener('auth:expired', handleExpired);
+    };
+  }, [logout]);
 
   const activeCompany = session?.user?.companies?.find((company) => company.id === session.activeCompanyId) ?? null;
   const value = useMemo<AuthContextValue>(() => ({

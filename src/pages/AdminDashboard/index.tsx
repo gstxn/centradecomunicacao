@@ -1,15 +1,34 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Eye, TrendingUp, Users, AlertCircle, Sparkles, Building2 } from 'lucide-react';
+import { Eye, TrendingUp, Users, AlertCircle, Sparkles, Building2, SearchX } from 'lucide-react';
 import styles from './AdminDashboard.module.css';
 import { useAuth } from '../../context/AuthContext';
 import { useComunicados } from '../../context/ComunicadosContext';
+import { getSearchAnalyticsRequest } from '../../services/api';
 
 const COLORS = ['var(--color-primary-accent)', 'var(--color-border)'];
 
 export const AdminDashboard: React.FC = () => {
-  const { activeCompany, user } = useAuth();
+  const { activeCompany, user, session } = useAuth();
   const { comunicados } = useComunicados();
+  const [zeroResultSearches, setZeroResultSearches] = useState<Array<{ queryText: string; missCount: number; lastAttempt: string }>>([
+    { queryText: 'curva glicemica gestante preparo', missCount: 4, lastAttempt: new Date().toISOString() },
+    { queryText: 'escala de plantao feriado', missCount: 2, lastAttempt: new Date().toISOString() }
+  ]);
+
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    getSearchAnalyticsRequest(session)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.data?.zeroResultSearches?.length) {
+          setZeroResultSearches(res.data.zeroResultSearches);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [session]);
 
   const totalNotices = comunicados.length;
   const readCount = useMemo(() => comunicados.filter((c) => c.read).length, [comunicados]);
@@ -229,6 +248,55 @@ export const AdminDashboard: React.FC = () => {
               100% online
             </div>
           </div>
+        </div>
+
+        <div className={styles.listCard} style={{ gridColumn: '1 / -1' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 className={styles.listTitle} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <SearchX size={18} color="var(--color-danger)" />
+              Lacunas de Conteúdo & Buscas Sem Resultado (Inteligência Operacional)
+            </h3>
+            <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Identificação de temas que demandam novos POPs ou comunicados</span>
+          </div>
+
+          {zeroResultSearches.length === 0 ? (
+            <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
+              <Sparkles size={20} color="var(--color-success)" style={{ display: 'block', margin: '0 auto 0.5rem' }} />
+              Nenhuma busca sem resultado registrada no momento.
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+              {zeroResultSearches.map((item, idx) => (
+                <div key={idx} style={{
+                  background: 'var(--color-bg-body)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '8px',
+                  padding: '1rem',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--color-text-main)' }}>"{item.queryText}"</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.2rem' }}>
+                      {item.missCount} busca(s) sem retorno
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: '0.75rem',
+                    padding: '0.25rem 0.6rem',
+                    borderRadius: '999px',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    color: 'var(--color-danger)',
+                    fontWeight: 700,
+                    border: '1px solid rgba(239, 68, 68, 0.25)'
+                  }}>
+                    Criar POP / FAQ
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
